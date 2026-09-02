@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<defs>
+<linearGradient id="b" x1="0" y1="0" x2="1" y2="1">
+<stop offset="0" stop-color="#343a44"/><stop offset="1" stop-color="#121419"/>
+</linearGradient>
+<linearGradient id="n" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0" stop-color="#c3cddb"/><stop offset="1" stop-color="#8093a9"/>
+</linearGradient>
+</defs>
+<rect width="512" height="512" fill="url(#b)"/>
+<circle cx="256" cy="256" r="210" fill="none" stroke="#ffffff" stroke-opacity="0.05" stroke-width="26"/>
+<circle cx="256" cy="256" r="150" fill="none" stroke="#ffffff" stroke-opacity="0.04" stroke-width="18"/>
+<g fill="url(#n)">
+<ellipse cx="196" cy="352" rx="40" ry="30" transform="rotate(-18 196 352)"/>
+<ellipse cx="338" cy="330" rx="40" ry="30" transform="rotate(-18 338 330)"/>
+<rect x="222" y="168" width="14" height="182"/>
+<rect x="364" y="146" width="14" height="182"/>
+<polygon points="222,168 378,146 378,186 222,208"/>
+</g>
+<g stroke="#5d6b7d" stroke-width="6" fill="#5d6b7d" opacity="0.55">
+<line x1="396" y1="430" x2="446" y2="404"/><line x1="446" y1="404" x2="466" y2="446"/><line x1="396" y1="430" x2="466" y2="446"/>
+<circle cx="396" cy="430" r="10"/><circle cx="446" cy="404" r="10"/><circle cx="466" cy="446" r="10"/>
+</g>
+</svg>

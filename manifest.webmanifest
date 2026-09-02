@@ -1,0 +1,13 @@
+{
+  "name": "PeerTunes",
+  "short_name": "PeerTunes",
+  "description": "A p2p iPod for your local music.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0a0b0d",
+  "theme_color": "#0a0b0d",
+  "icons": [
+    { "src": "peersky://static/assets/peertunes.ico", "sizes": "any" }
+  ]
+}

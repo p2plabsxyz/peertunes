@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#0b0c0f">
+  <meta name="description" content="PeerTunes. A p2p iPod for your local music. Load songs from hyper:// or your own folders.">
+  <title>PeerTunes</title>
+  <link rel="icon" href="peersky://static/assets/peertunes.ico">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="stylesheet" href="./css/style.css">
+</head>
+<body>
+  <div class="stage" id="stage">
+    <div class="ipod" id="ipod">
+      <div class="screen-bezel">
+        <div class="screen" id="screen">
+          <header class="statusbar">
+            <span class="sb-left">
+              <span id="sb-play" class="sb-ico" hidden></span>
+              <span id="sb-pause" class="sb-ico" hidden></span>
+              <span class="sb-title" id="sb-title">PeerTunes</span>
+            </span>
+            <span class="sb-clock" id="sb-clock">--:--</span>
+            <span class="sb-right">
+              <span id="sb-bt" class="sb-bt" hidden></span>
+            </span>
+          </header>
+          <main class="screen-body" id="screen-body"></main>
+        </div>
+      </div>
+
+      <div class="wheelzone">
+        <div class="clickwheel" id="wheel" aria-label="Click wheel">
+          <span class="wz wz-menu" data-btn="menu">MENU</span>
+          <span class="wz wz-prev" data-btn="prev"></span>
+          <span class="wz wz-next" data-btn="next"></span>
+          <span class="wz wz-play" data-btn="play"></span>
+          <button class="wheel-center" id="wheel-center" data-btn="select" aria-label="Select"></button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="drop-hint" id="drop-hint"><div>Drop music to sync</div></div>
+
+  <audio id="audio" preload="metadata"></audio>
+  <input type="file" id="file-dir" webkitdirectory multiple hidden>
+  <input type="file" id="file-flat" multiple hidden
+    accept="audio/*,.mp3,.m4a,.m4b,.mp4,.aac,.flac,.ogg,.oga,.opus,.wav,.webm">
+
+  <!-- plain scripts so the app also works from file:// and older engines -->
+  <script defer src="./assets/icons.js"></script>
+  <script defer src="./js/metadata.js"></script>
+  <script defer src="./js/library.js"></script>
+  <script defer src="./js/player.js"></script>
+  <script defer src="./js/wheel.js"></script>
+  <script defer src="./js/ui.js"></script>
+  <script defer src="./js/main.js"></script>
+</body>
+</html>
