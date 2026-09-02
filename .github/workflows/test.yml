@@ -1,0 +1,46 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Tests (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        # Electron in peersky-browser bundles Node 22; 24 covers the next line.
+        node: ['22', '24']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Syntax check
+        run: |
+          node --check js/metadata.js
+          node --check js/library.js
+          node --check js/player.js
+          node --check js/wheel.js
+          node --check js/ui.js
+          node --check js/main.js
+          node --check assets/icons.js
+
+      # No dependencies and the tests build their own audio fixtures, so the
+      # suite runs with no install step.
+      - name: Test suite
+        run: node --test --test-reporter=spec "test/*.test.js"
