@@ -69,12 +69,21 @@
 
   // ---------- status bar ----------
 
+  // Background tabs throttle timers, so the clock also resyncs on wake.
+  let clockTimer = null;
   function tickClock() {
     const now = new Date();
     $("sb-clock").textContent = now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-    setTimeout(tickClock, 61000 - (now.getSeconds() * 1000 + now.getMilliseconds()));
+    clearTimeout(clockTimer);
+    const msToNextMinute = 60000 - (now.getSeconds() * 1000 + now.getMilliseconds());
+    clockTimer = setTimeout(tickClock, Math.max(1000, msToNextMinute));
   }
   tickClock();
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) tickClock();
+  });
+  window.addEventListener("focus", tickClock);
+  window.addEventListener("pageshow", tickClock);
 
   // svg elements ignore the .hidden property, so toggle the attribute
   const show = (el, on) => { if (on) el.removeAttribute("hidden"); else el.setAttribute("hidden", ""); };
@@ -84,23 +93,26 @@
     show($("sb-pause"), player.current() && !player.playing);
   });
 
-  // show the bluetooth mark when sound is going out over bluetooth
+  // Show the bluetooth mark whenever sound is routed somewhere external.
   async function updateBluetooth() {
     const el = $("sb-bt");
     try {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+      if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+        show(el, false);
+        return;
+      }
       const devices = await navigator.mediaDevices.enumerateDevices();
-      const bt = devices.some((d) =>
-        d.kind === "audiooutput" && /bluetooth|airpod|earbud|buds|headset|wireless|wh-|wf-/i.test(d.label || ""));
-      show(el, bt && player.playing);
+      show(el, devices.some(PT.looksExternalAudioOutput));
     } catch {
       show(el, false);
     }
   }
+
   if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
     navigator.mediaDevices.addEventListener("devicechange", updateBluetooth);
   }
   player.addEventListener("state", updateBluetooth);
+  updateBluetooth();
 
   // ---------- backlight dim ----------
 

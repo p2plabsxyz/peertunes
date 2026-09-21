@@ -593,6 +593,27 @@
     return tags;
   }
 
+  // Music is nearly always filed one album to a folder, so when a file
+  // carries no album tag the containing folder is a better guess than
+  // "Unknown Album". Generic library roots are not albums, so they are
+  // skipped rather than turned into a fake one.
+  const GENERIC_FOLDER = /^(music|songs?|audio|mp3s?|media|tracks|tunes|library|downloads?|files?|albums?|itunes|playlists?|various|misc|new folder|home|public|root)$/i;
+
+  function albumFromPath(path) {
+    const clean = String(path || "").split(/[?#]/)[0];
+    const parts = clean.split("/").filter(Boolean);
+    if (parts.length < 2) return "";
+    const folderIndex = parts.length - 2;
+    // hyper://<key>/song.mp3 has no folder: that segment is the drive host
+    if (/^[a-z][a-z0-9+.-]*:$/i.test(parts[0]) && folderIndex <= 1) return "";
+    // drop the file itself, then take the folder holding it
+    const folder = decodeSafe(parts[folderIndex] || "").trim();
+    if (!folder || GENERIC_FOLDER.test(folder)) return "";
+    if (folder.length > 120) return "";
+    return folder;
+  }
+
+  PT.albumFromPath = albumFromPath;
   PT.isAudioName = isAudioName;
   PT.mapP2p = mapP2p;
   PT.fileSource = fileSource;

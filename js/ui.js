@@ -33,6 +33,13 @@
 
   const u = (n) => `calc(var(--u) * ${n})`;
 
+  // Fraction of the way along a bar that a pointer landed on, clamped so a
+  // drag past either edge seeks to the start or the end rather than beyond.
+  function barFraction(clientX, rect) {
+    if (!rect || !rect.width) return 0;
+    return Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+  }
+
   // clipboard api needs a secure context, the textarea trick works everywhere
   async function copyText(s) {
     try {
@@ -601,8 +608,25 @@
             label: t.title,
             tnum: t.track || i + 1,
             action: () => ui.playAndShow(a.tracks, i),
-            hold: () => ui.push(ui.pickPlaylistScreen(t)),
-          }));
+            hold: () => ui.push(ui.songActionsScreen(t)),
+          })).concat([{
+            label: "Delete Album…",
+            dim: true,
+            action: () => ui.dialog({
+              msg: `Delete ${a.name}?`,
+              sub: `${a.tracks.length} song${a.tracks.length === 1 ? "" : "s"} will be removed from this device.`,
+              buttons: [
+                {
+                  label: "Delete",
+                  action: async () => {
+                    await ui.lib.deleteAlbum(key);
+                    ui.popIf("album");
+                  },
+                },
+                { label: "Cancel" },
+              ],
+            }),
+          }]);
         },
         empty: { big: "Empty Album", small: "" },
       });
@@ -662,7 +686,7 @@
             label: t.title,
             sub: [t.artist, t.album].filter(Boolean).join(" — "),
             action: () => ui.playAndShow(songs, i),
-            hold: () => ui.push(ui.pickPlaylistScreen(t)),
+            hold: () => ui.push(ui.songActionsScreen(t)),
           }));
         },
         empty: { big: "No Songs", small: "Add some music first." },
@@ -797,6 +821,39 @@
     }
 
     // On-The-Go: hold the center button (or long press a song) to land here
+    // Hold a song to reach this: add it to a playlist, or remove it for good.
+    songActionsScreen(track) {
+      const ui = this;
+      return this.list({
+        name: "songactions",
+        title: track.title,
+        rows: () => [
+          {
+            label: "Add to Playlist…",
+            chevron: true,
+            action: () => { ui.pop(); ui.push(ui.pickPlaylistScreen(track)); },
+          },
+          {
+            label: "Delete Song…",
+            action: () => ui.dialog({
+              msg: "Delete this song?",
+              sub: track.title,
+              buttons: [
+                {
+                  label: "Delete",
+                  action: async () => {
+                    await ui.lib.deleteTrack(track.id);
+                    ui.popIf("songactions");
+                  },
+                },
+                { label: "Cancel" },
+              ],
+            }),
+          },
+        ],
+      });
+    }
+
     pickPlaylistScreen(track) {
       const ui = this;
       return this.list({
@@ -957,10 +1014,53 @@
             () => ui.player.removeEventListener("time", onTime),
             () => ui.player.removeEventListener("state", onState),
           ];
+          this._bindScrub(np.querySelector(".np-progress"));
           this.paintTrack();
           this.paintTime();
         },
         destroy() { cleanup.forEach((f) => f()); },
+        // Touch and hold the bar to scrub: the fill follows your finger and
+        // the song only jumps once you let go.
+        _bindScrub(bar) {
+          if (!bar) return;
+          const seekTo = (clientX, commit) => {
+            const d = ui.player.audio.duration;
+            if (!Number.isFinite(d) || d <= 0) return;
+            const fraction = barFraction(clientX, bar.getBoundingClientRect());
+            const target = fraction * d;
+            this.els.fill.style.width = `${fraction * 100}%`;
+            this.els.tEl.textContent = fmtTime(target);
+            this.els.tRem.textContent = "-" + fmtTime(Math.max(0, d - target));
+            if (commit) ui.player.seekTo(target);
+          };
+
+          bar.addEventListener("pointerdown", (e) => {
+            const d = ui.player.audio.duration;
+            if (!Number.isFinite(d) || d <= 0) return;
+            this._dragging = true;
+            this.np.classList.add("scrub");
+            try { bar.setPointerCapture(e.pointerId); } catch {}
+            ui.wheel.tick();
+            seekTo(e.clientX, false);
+            e.preventDefault();
+          });
+          bar.addEventListener("pointermove", (e) => {
+            if (this._dragging) seekTo(e.clientX, false);
+          });
+          const end = (e) => {
+            if (!this._dragging) return;
+            this._dragging = false;
+            seekTo(e.clientX, true);
+            ui.wheel.tick(1.2);
+            if (this.mode !== "scrub") this.np.classList.remove("scrub");
+          };
+          bar.addEventListener("pointerup", end);
+          bar.addEventListener("pointercancel", () => {
+            this._dragging = false;
+            if (this.mode !== "scrub") this.np.classList.remove("scrub");
+            this.paintTime();
+          });
+        },
         async paintTrack() {
           const t = ui.player.current();
           if (!t) return;
@@ -980,6 +1080,7 @@
           this.els.badges.innerHTML = b.join("");
         },
         paintTime() {
+          if (this._dragging) return;
           const a = ui.player.audio;
           const d = a.duration;
           const cur = a.currentTime || 0;
@@ -1143,11 +1244,20 @@
           box.innerHTML = `
             <div class="cap">Load music from a URL</div>
             <input type="url" spellcheck="false" autocapitalize="off" autocomplete="off" placeholder="hyper://…">
+            <button type="button" class="urlscan">${PT.icons.qr}<span>Scan QR Code</span></button>
             <div class="hint">Point it at a hyper:// drive folder with songs, an ipfs:// folder, or a direct audio link. Press the center button or Enter to sync.</div>`;
           page.appendChild(box);
           this.input = box.querySelector("input");
           this.input.addEventListener("keydown", (e) => {
             if (e.key === "Enter") { e.preventDefault(); this.onSelect(); }
+          });
+          box.querySelector(".urlscan").addEventListener("click", () => {
+            this.input.blur();
+            ui.push(ui.scanScreen((url) => {
+              ui.popIf("scan");
+              ui.popIf("url");
+              ui.runImport(() => ui.lib.addUrl(url), "Syncing");
+            }));
           });
           setTimeout(() => this.input.focus(), 240);
         },
@@ -1159,6 +1269,93 @@
           ui.runImport(() => ui.lib.addUrl(url), "Syncing");
         },
         onScroll() {},
+      };
+    }
+
+    // Point the camera at a QR code holding a music URL or a share link.
+    // Runs inside the LCD, so the iPod look survives.
+    scanScreen(onResult) {
+      const ui = this;
+      let stream = null;
+      let detector = null;
+      let timer = null;
+      let stopped = false;
+
+      const stop = () => {
+        stopped = true;
+        clearInterval(timer);
+        if (stream) {
+          for (const track of stream.getTracks()) {
+            try { track.stop(); } catch {}
+          }
+          stream = null;
+        }
+      };
+
+      return {
+        name: "scan",
+        title: "Scan QR",
+        render(page) {
+          const box = h("div", "scanpage");
+          box.innerHTML = `
+            <video playsinline muted autoplay></video>
+            <div class="scan-frame"></div>
+            <div class="scan-note">Point at a QR code</div>`;
+          page.appendChild(box);
+          this.note = box.querySelector(".scan-note");
+          this.start(box.querySelector("video"));
+        },
+        destroy() { stop(); },
+        async start(video) {
+          const Detector = window.BarcodeDetector;
+          if (!Detector || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            this.note.textContent = "This browser cannot scan QR codes. Type the URL instead.";
+            return;
+          }
+
+          try {
+            detector = new Detector({ formats: ["qr_code"] });
+          } catch {
+            this.note.textContent = "This browser cannot scan QR codes. Type the URL instead.";
+            return;
+          }
+
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({
+              video: { facingMode: { ideal: "environment" } },
+              audio: false,
+            });
+          } catch (err) {
+            this.note.textContent = err && err.name === "NotAllowedError"
+              ? "Camera access was denied."
+              : "No camera available.";
+            return;
+          }
+
+          if (stopped) { stop(); return; } // screen left while we were asking
+          video.srcObject = stream;
+          try { await video.play(); } catch {}
+
+          timer = setInterval(async () => {
+            if (stopped || !detector || video.readyState < 2) return;
+            let codes = [];
+            try {
+              codes = await detector.detect(video);
+            } catch {
+              return;
+            }
+            for (const code of codes) {
+              const url = PT.readScannedUrl(code.rawValue);
+              if (!url) continue;
+              stop();
+              ui.wheel.tick(1.2);
+              onResult(url);
+              return;
+            }
+          }, 350);
+        },
+        onScroll() {},
+        onSelect() {},
       };
     }
 
@@ -1203,15 +1400,17 @@
         failed = err || new Error("sync failed");
       }
       if (failed) {
-        const p2p = /^(hyper|ipfs|ipns):/i.test(failed.url || "");
+        const schemeMatch = /^(hyper|ipfs|ipns):/i.exec(failed.url || "");
+        const p2p = !!schemeMatch;
+        const scheme = schemeMatch ? schemeMatch[1].toLowerCase() : "";
         if (failed.code === "UNREACHABLE" && p2p) {
           // a page already on a p2p protocol clearly has hyper support
           const inP2p = /^(hyper|ipfs|ipns|peersky):$/i.test(location.protocol);
           this.dialog({
             msg: "Can't reach that URL",
             sub: inP2p
-              ? "The drive did not answer. It may not be seeded, or this browser build does not let pages fetch hyper:// yet."
-              : "This browser may not speak hyper://. Open PeerTunes inside PeerSky (or another p2p browser), or use an http link here.",
+              ? `Nothing answered on ${scheme}://. The source may not be seeded, or this build may not carry a ${scheme}:// handler.`
+              : `This browser does not speak ${scheme}://. Open PeerTunes inside PeerSky, or use an http link here.`,
             buttons: [{ label: "OK" }],
           });
         } else if (failed.code === "EMPTY") {
@@ -1287,6 +1486,7 @@
     return el;
   }
 
+  PT.barFraction = barFraction;
   PT.UI = UI;
   PT.DEFAULT_COVER = DEFAULT_COVER;
   PT.fmtTime = fmtTime;

@@ -18,6 +18,7 @@
     repeat: `<svg viewBox="0 0 24 24"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/></svg>`,
     repeatOne: `<svg viewBox="0 0 24 24"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4zm-5-9h1.5v5H12v-3.5h-1V9l1-1z"/></svg>`,
     speaker: `<svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4zM14 3.2v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6z"/></svg>`,
-    sync: `<svg viewBox="0 0 48 48" class="arrows"><path d="M24 6a18 18 0 0 1 16.9 11.7l3.8-1.4A22 22 0 0 0 24 2v-2l-8 5 8 5V6zM24 42A18 18 0 0 1 7.1 30.3l-3.8 1.4A22 22 0 0 0 24 46v2l8-5-8-5v4z"/></svg>`,
+    qr: `<svg viewBox="0 0 24 24"><path d="M3 3h8v8H3V3zm2 2v4h4V5H5zm8-2h8v8h-8V3zm2 2v4h4V5h-4zM3 13h8v8H3v-8zm2 2v4h4v-4H5zm8-2h3v2h-3v-2zm5 0h3v3h-2v-1h-1v-2zm-5 4h2v2h2v2h-4v-4zm6 1h3v3h-3v-3zm-2 2h1v1h-1v-1z"/></svg>`,
+        sync: `<svg viewBox="0 0 48 48" class="arrows"><path d="M24 6a18 18 0 0 1 16.9 11.7l3.8-1.4A22 22 0 0 0 24 2v-2l-8 5 8 5V6zM24 42A18 18 0 0 1 7.1 30.3l-3.8 1.4A22 22 0 0 0 24 46v2l8-5-8-5v4z"/></svg>`,
   };
 })(typeof window !== "undefined" ? (window.PT = window.PT || {}) : module.exports);

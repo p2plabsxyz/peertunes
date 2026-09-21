@@ -11,16 +11,19 @@
 - Loads music from a `hyper://` drive folder, an `ipfs://` folder, a plain http folder listing, or a direct audio link
 - Upload a folder (or drag and drop it on the page) and it syncs into the library
 - Reads tags right from the files: MP3 (ID3v2.2/2.3/2.4 and ID3v1), FLAC, M4A, OGG/Opus, WAV. Any normally tagged song works, embedded covers included
-- Shows a default cover when a song has none
+- Shows a default cover when a song has none, and names an album after its folder when the file carries no album tag
 - Albums open in Cover Flow. Spin the wheel and the covers flip in 3D, like the good old days
 - Artists, Songs and Genres as classic lists, sorted like an iPod would
 - Custom playlists, with the On-The-Go gesture: hold the center button on a song to file it away
+- Scan a QR code to load a drive or a share link, instead of typing a long `hyper://` key
+- Touch and hold the progress bar to scrub, so you can jump to any point in a song
+- Delete a song, a whole album, or a playlist when you are done with it
 - Share a playlist as a `peersky://p2p/peertunes` link. It publishes to a hyper:// drive and the other side chooses Import or Play Only, so it never messes up their library
 - The library lives in IndexedDB, so your songs stay on the device between visits
 - A refresh brings back the exact page you were on
 - Media Session support: lock your phone and the song keeps playing, with cover art and controls on the lock screen
 - Click wheel with the classic clicker sound and a small vibration on phones
-- Bluetooth mark in the status bar when the sound goes out over bluetooth headphones
+- Status bar shows whether a song is playing or paused, and a bluetooth mark when the sound is going somewhere other than the phone, car stereos included
 
 Want to download your cloud songs playlist and own it locally? Use [zipify-tunes](https://github.com/akhileshthite/zipify-tunes). It turns a playlist into MP3s with ID3 tags and square cover art embedded, so everything shows up in PeerTunes with proper titles, albums and covers.
 
@@ -34,12 +37,14 @@ The wheel works like the real one:
 - Tap the center button to select
 - MENU goes back, the bottom button is play and pause, left and right are previous and next
 - On the Now Playing screen, scrolling changes the volume. Press center to switch to scrubbing, scroll to seek, press center again to leave
+- Or just touch and hold the progress bar and slide: the song jumps when you let go
 - In Cover Flow you can also swipe sideways or tap a side cover
 - Keyboard also works: arrows, Enter, Escape, Space
 
 To add music, go to `Add Music`:
 
 - `Open URL…` and paste a `hyper://` folder that has your songs
+- `Scan QR Code` to point the camera at a code holding a drive link or a shared playlist
 - `Upload Folder…` to pick a folder from your device
 - Or just drop files or a folder anywhere on the page
 

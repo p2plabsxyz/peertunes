@@ -102,6 +102,28 @@
     return out;
   }
 
+  // What a scanned QR code may legitimately contain: a music source, or a
+  // PeerTunes share link carrying one. Anything else is rejected rather than
+  // handed to fetch, since a QR code is untrusted input.
+  const SCANNABLE_SCHEME = /^(hyper|ipfs|ipns|https?):\/\//i;
+  const MAX_SCANNED_URL_LENGTH = 4096;
+
+  function readScannedUrl(text) {
+    const raw = String(text || "").trim();
+    if (!raw || raw.length > MAX_SCANNED_URL_LENGTH) return "";
+    if (/[\s<>"'`\\]/.test(raw)) return "";
+
+    // A share link wraps the real source in ?playlist= / #src=
+    const wrapped = /[#?&](?:playlist|src)=([^&]+)/.exec(raw);
+    if (wrapped) {
+      let inner = "";
+      try { inner = decodeURIComponent(wrapped[1]); } catch { return ""; }
+      return SCANNABLE_SCHEME.test(inner) ? inner : "";
+    }
+
+    return SCANNABLE_SCHEME.test(raw) ? raw : "";
+  }
+
   function slug(s) {
     const out = (s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
     return out || "playlist";
@@ -177,19 +199,22 @@
       this.tracks.set(track.id, track);
     }
 
-    _mkTrack(id, kind, tags, extra) {
+    // `path` is the file's url or relative path: when the file carries no
+    // album tag, the folder holding it is a far better guess than "Unknown".
+    _mkTrack(id, kind, tags, extra, path) {
+      const album = tags.album || PT.albumFromPath(path) || "";
       return Object.assign({
         id,
         kind, // "file" | "url"
         title: tags.title || "Unknown",
         artist: tags.artist || "",
-        album: tags.album || "",
+        album,
         albumArtist: tags.albumArtist || "",
         year: tags.year || null,
         genre: tags.genre || "",
         track: tags.track || null,
         disc: tags.disc || null,
-        coverId: this.albumKeyOf(tags),
+        coverId: this.albumKeyOf({ ...tags, album }),
         added: Date.now(),
       }, extra);
     }
@@ -210,7 +235,7 @@
           try {
             if (!this.tracks.has(id)) {
               const tags = await PT.readTags(PT.fileSource(f));
-              const track = this._mkTrack(id, "file", tags, { fileName: f.name, size: f.size });
+              const track = this._mkTrack(id, "file", tags, { fileName: f.name, size: f.size }, f.webkitRelativePath || f.name);
               await this._saveTrack(track, f, tags.picture);
               added++;
             }
@@ -261,7 +286,7 @@
                 }
                 tags = await PT.readTags({ name: decodeSafe(job.url.split("/").pop() || ""), size: 0, read: async () => new Uint8Array(0) });
               }
-              const track = this._mkTrack(id, "url", tags, { url: job.url });
+              const track = this._mkTrack(id, "url", tags, { url: job.url }, job.url);
               await this._saveTrack(track, null, tags.picture);
               added++;
             }
@@ -380,7 +405,7 @@
               }
               tags = await PT.readTags({ name: decodeSafe(job.u.split("/").pop() || ""), size: 0, read: async () => new Uint8Array(0) });
             }
-            const t = this._mkTrack("t" + hash(job.u), "url", tags, { url: job.u, temp: true });
+            const t = this._mkTrack("t" + hash(job.u), "url", tags, { url: job.u, temp: true }, job.u);
             t.coverId = null;
             if (tags.picture) {
               try { t.coverUrl = URL.createObjectURL(new Blob([tags.picture.data], { type: tags.picture.mime })); } catch {}
@@ -558,6 +583,50 @@
       this._invalidate();
     }
 
+    // Remove a song everywhere: the record, its audio, any playlist that
+    // referenced it, and its cover once no other song shares that album.
+    async deleteTrack(id) {
+      const track = this.tracks.get(id);
+      if (!track) return false;
+
+      this.tracks.delete(id);
+      await idb(this.db, "tracks", "readwrite", (s) => s.delete(id));
+      if (track.kind === "file") {
+        await idb(this.db, "blobs", "readwrite", (s) => s.delete(id)).catch(() => {});
+      }
+
+      for (const pl of this.playlists.values()) {
+        if (!pl.trackIds.includes(id)) continue;
+        pl.trackIds = pl.trackIds.filter((t) => t !== id);
+        await idb(this.db, "playlists", "readwrite", (s) => s.put(pl)).catch(() => {});
+      }
+
+      if (track.coverId) {
+        const stillUsed = Array.from(this.tracks.values()).some((t) => t.coverId === track.coverId);
+        if (!stillUsed) {
+          await idb(this.db, "covers", "readwrite", (s) => s.delete(track.coverId)).catch(() => {});
+          const url = this._coverUrls.get(track.coverId);
+          if (url) URL.revokeObjectURL(url);
+          this._coverUrls.delete(track.coverId);
+        }
+      }
+
+      this._invalidate();
+      return true;
+    }
+
+    // Remove every song on an album in one go.
+    async deleteAlbum(key) {
+      const album = this.album(key);
+      if (!album) return 0;
+      const ids = album.tracks.map((t) => t.id);
+      let removed = 0;
+      for (const id of ids) {
+        if (await this.deleteTrack(id)) removed++;
+      }
+      return removed;
+    }
+
     async deletePlaylist(id) {
       this.playlists.delete(id);
       await idb(this.db, "playlists", "readwrite", (s) => s.delete(id));
@@ -698,4 +767,5 @@
   PT.parseManifest = parseManifest;
   PT.resolveManifestFiles = resolveManifestFiles;
   PT.parseListingHtml = parseListingHtml;
+  PT.readScannedUrl = readScannedUrl;
 })(typeof window !== "undefined" ? (window.PT = window.PT || {}) : module.exports);
