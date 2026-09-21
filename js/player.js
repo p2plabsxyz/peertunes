@@ -157,6 +157,14 @@
       }
     }
 
+    // Jump to an absolute position, used by the touch scrubber.
+    seekTo(sec) {
+      const d = this.audio.duration;
+      if (!Number.isFinite(d) || d <= 0) return;
+      this.audio.currentTime = Math.min(Math.max(0, sec), Math.max(0, d - 0.2));
+      this.dispatchEvent(new CustomEvent("time"));
+    }
+
     seekBy(sec) {
       const d = this.audio.duration;
       if (!Number.isFinite(d)) return;
@@ -227,5 +235,20 @@
     }
   }
 
+  // Sound routed somewhere that is not the phone's own speaker. Car stereos
+  // are named after the car, so keyword matching alone misses them: anything
+  // that is not a recognised built-in output counts as external.
+  const BUILTIN_OUTPUT = /\b(speaker|earpiece|receiver|built[- ]?in|internal|default|communications|system|phone|handset|wired|headphone jack|3\.5)\b/i;
+  const WIRELESS_OUTPUT = /bluetooth|a2dp|airpod|airplay|earbud|buds|headset|wireless|carplay|android auto|\bcar\b|wh-|wf-|beats|jbl|bose|soundbar/i;
+
+  function looksExternalAudioOutput(device) {
+    if (!device || device.kind !== "audiooutput") return false;
+    const label = String(device.label || "").trim();
+    if (!label) return false; // labels need permission; absence is not evidence
+    if (WIRELESS_OUTPUT.test(label)) return true;
+    return !BUILTIN_OUTPUT.test(label) && device.deviceId !== "default";
+  }
+
+  PT.looksExternalAudioOutput = looksExternalAudioOutput;
   PT.Player = Player;
 })(typeof window !== "undefined" ? (window.PT = window.PT || {}) : module.exports);
