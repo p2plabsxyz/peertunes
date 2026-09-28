@@ -30,6 +30,9 @@
 
   // ---------- share manifest (pure helpers, covered by tests) ----------
 
+  // How many files are read at once while importing from a URL.
+  const IMPORT_CONCURRENCY = 8;
+
   function buildManifest(name, entries) {
     return {
       app: "peertunes",
@@ -240,7 +243,10 @@
       let unreachable = 0;
       const ids = new Array(total).fill(null);
       const jobs = fileUrls.map((url, i) => ({ url, i }));
-      const workers = Array.from({ length: 3 }, async () => {
+      // Each job is one ranged read of a file's first 128KB, so the time goes
+      // on waiting rather than on the device. Three at a time meant a playlist
+      // of eighteen took six rounds of that wait.
+      const workers = Array.from({ length: IMPORT_CONCURRENCY }, async () => {
         while (jobs.length) {
           const job = jobs.shift();
           const id = "u" + hash(job.url);
@@ -285,7 +291,7 @@
     async addUrl(inputUrl, opts = {}) {
       const remember = opts.remember !== false;
       const url = (inputUrl || "").trim();
-      if (!url) return 0;
+      if (!url) return { added: 0, found: 0 };
       this.busy = true;
       try {
         const state = {};
@@ -303,8 +309,14 @@
           err.url = url;
           throw err;
         }
-        if (remember && res.added) await this._rememberSource(url);
-        return res.added;
+        // Remembered whichever way it went. A source every one of whose songs
+        // was already here is still a source, and only remembering it when
+        // something was new left it out of Rescan for good.
+        if (remember) await this._rememberSource(url);
+        // How many songs this source holds, and how many of them were new. The
+        // two are different the moment an import is run twice, or resumed after
+        // being interrupted, and reporting only the second read as a failure.
+        return { added: res.added, found: res.ids.length };
       } finally {
         this.busy = false;
       }
@@ -351,7 +363,7 @@
         }
         if (grew) await this._savePlaylist(pl);
         await this._rememberSource(share.url);
-        return { added: res.added, playlist: pl };
+        return { added: res.added, found: res.ids.length, playlist: pl };
       } finally {
         this.busy = false;
       }
@@ -364,7 +376,7 @@
       const tracks = new Array(files.length).fill(null);
       let done = 0;
       const jobs = files.map((u, i) => ({ u, i }));
-      const workers = Array.from({ length: 3 }, async () => {
+      const workers = Array.from({ length: IMPORT_CONCURRENCY }, async () => {
         while (jobs.length) {
           const job = jobs.shift();
           try {
@@ -517,11 +529,15 @@
     }
 
     async rescan() {
-      let added = 0;
+      let added = 0, found = 0;
       for (const s of this.sources) {
-        try { added += await this.addUrl(s.url, { remember: false }); } catch {}
+        try {
+          const res = await this.addUrl(s.url, { remember: false });
+          added += res.added;
+          found += res.found;
+        } catch {}
       }
-      return added;
+      return { added, found };
     }
 
     async clear() {

@@ -1209,9 +1209,9 @@
 
     async runImport(fn, label = "Syncing") {
       if (this.lib.busy) return 0;
-      let added = 0, failed = null;
+      let result = { added: 0, found: 0 }, failed = null;
       try {
-        added = await this.runTask(fn, label);
+        result = await this.runTask(fn, label) || result;
       } catch (err) {
         console.warn(err);
         failed = err || new Error("sync failed");
@@ -1238,12 +1238,22 @@
           this.dialog({ msg: "Could not sync", sub: "Check the URL and try again.", buttons: [{ label: "OK" }] });
         }
       } else {
+        const { added, found } = result;
+        const already = Math.max(0, found - added);
+        // "Added 1 song" after a sync of eighteen reads as a failure. It was
+        // true and useless: the other seventeen were already here from a run
+        // that had been interrupted. Say what is in the library now as well.
         this.dialog({
-          msg: added ? `Added ${added} song${added === 1 ? "" : "s"}` : "No new songs found",
+          msg: added
+            ? `Added ${added} song${added === 1 ? "" : "s"}`
+            : found ? "Already up to date" : "No new songs found",
+          sub: already
+            ? `${already} of ${found} ${already === 1 ? "was" : "were"} already in your library`
+            : "",
           buttons: [{ label: "OK" }],
         });
       }
-      return added;
+      return result.added;
     }
 
     // ---------- settings ----------

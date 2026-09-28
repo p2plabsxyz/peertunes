@@ -141,3 +141,48 @@ test("outside PeerSky the wheel still uses what the web gives it", () => {
 
   assert.deepEqual(vibrated, [4, 8]);
 });
+
+// What an import reports back. "Added 1 song" after syncing eighteen is true
+// and useless: the other seventeen were already here from a run that had been
+// interrupted, and it reads as a failure.
+test("an import says how many were new and how many were already here", () => {
+  const messages = [];
+  const ui = {
+    lib: { busy: false },
+    runTask: async (fn) => fn(),
+    dialog: (opts) => messages.push(opts),
+  };
+
+  const { runImport } = loadRunImport();
+
+  return (async () => {
+    await runImport.call(ui, async () => ({ added: 1, found: 18 }));
+    assert.equal(messages.at(-1).msg, "Added 1 song");
+    assert.equal(messages.at(-1).sub, "17 of 18 were already in your library");
+
+    await runImport.call(ui, async () => ({ added: 18, found: 18 }));
+    assert.equal(messages.at(-1).msg, "Added 18 songs");
+    assert.equal(messages.at(-1).sub, "");
+
+    // Nothing new, but the source is there: not the same as finding nothing.
+    await runImport.call(ui, async () => ({ added: 0, found: 18 }));
+    assert.equal(messages.at(-1).msg, "Already up to date");
+    assert.equal(messages.at(-1).sub, "18 of 18 were already in your library");
+
+    await runImport.call(ui, async () => ({ added: 0, found: 0 }));
+    assert.equal(messages.at(-1).msg, "No new songs found");
+  })();
+});
+
+// ui.js is a browser file built around the DOM, so lift the one method out
+// rather than standing the whole thing up.
+function loadRunImport() {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "js", "ui.js"), "utf8");
+  const start = src.indexOf("    async runImport(fn, label");
+  const end = src.indexOf("\n    }", src.indexOf("return result.added;")) + "\n    }".length;
+  const body = src.slice(start, end).replace(/^\s*async runImport\(/, "async function runImport(");
+  // eslint-disable-next-line no-new-func
+  return { runImport: new Function(`return (${body})`)() };
+}
