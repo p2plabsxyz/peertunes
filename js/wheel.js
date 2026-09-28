@@ -173,7 +173,20 @@
         srcNode.connect(hp).connect(g).connect(ctx.destination);
         srcNode.start();
       } catch {}
-      if (this._touched) { try { navigator.vibrate && navigator.vibrate(4); } catch {} }
+      if (this._touched) this._haptic(gainMul > 1 ? "medium" : "light");
+    }
+
+    // A click you can feel as well as hear. WKWebView has no navigator.vibrate
+    // at all, so on iPhone the wheel was silent to the hand; inside PeerSky the
+    // page asks native, which has the taptic engine. Elsewhere the web API is
+    // the best on offer.
+    _haptic(weight) {
+      try {
+        if (window.peerskyHaptic && window.peerskyHaptic(weight)) return;
+      } catch {}
+      try {
+        navigator.vibrate && navigator.vibrate(weight === "medium" ? 8 : 4);
+      } catch {}
     }
   }
 

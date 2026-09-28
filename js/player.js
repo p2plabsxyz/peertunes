@@ -25,6 +25,10 @@
         this._positionState();
       });
       audio.addEventListener("durationchange", () => this.dispatchEvent(new CustomEvent("time")));
+      // Where the playhead actually landed, and how fast it is moving: both are
+      // what the system scrubber draws itself from.
+      audio.addEventListener("seeked", () => this._positionState(true));
+      audio.addEventListener("ratechange", () => this._positionState(true));
       audio.addEventListener("error", () => {
         if (this.current()) this.dispatchEvent(new CustomEvent("trackerror", { detail: this.current() }));
       });
@@ -168,7 +172,8 @@
     seekBy(sec) {
       const d = this.audio.duration;
       if (!Number.isFinite(d)) return;
-      this.audio.currentTime = Math.min(Math.max(0, this.audio.currentTime + sec), d - 0.2);
+      // Through the same path as a drag, so the system hears about it too.
+      this._seekTo(Math.min(Math.max(0, this.audio.currentTime + sec), d - 0.2));
     }
 
     setVolume(v) {
@@ -195,7 +200,15 @@
       safe("pause", () => this.audio.pause());
       safe("previoustrack", () => this.prev());
       safe("nexttrack", () => this.next());
-      safe("seekto", (d) => { if (d.seekTime != null) this.audio.currentTime = d.seekTime; });
+      // The system scrubber moves on what we last reported, not on what the
+      // audio element is doing. Reporting the new position is throttled to once
+      // a second, so a drag that landed inside that second was answered with
+      // the old position and the scrubber sprang back to where it started.
+      // Every seek pushes the position straight away instead.
+      safe("seekto", (d) => {
+        if (d.seekTime == null) return;
+        this._seekTo(d.seekTime, d.fastSeek === true);
+      });
       safe("seekbackward", (d) => this.seekBy(-(d.seekOffset || 10)));
       safe("seekforward", (d) => this.seekBy(d.seekOffset || 10));
       safe("stop", () => { this.audio.pause(); this.audio.currentTime = 0; });
@@ -218,12 +231,28 @@
       } catch {}
     }
 
-    _positionState() {
+    // Moving the playhead, from the lock screen or from the app. fastSeek is
+    // what the system asks for mid-drag: cheaper, and the exact landing is
+    // settled by the final seekto.
+    _seekTo(seconds, fast = false) {
+      const d = this.audio.duration;
+      const target = Math.max(0, Number.isFinite(d) && d > 0 ? Math.min(seconds, d) : seconds);
+      try {
+        if (fast && typeof this.audio.fastSeek === "function") this.audio.fastSeek(target);
+        else this.audio.currentTime = target;
+      } catch {
+        return;
+      }
+      this._positionState(true);
+      this.dispatchEvent(new CustomEvent("time"));
+    }
+
+    _positionState(force = false) {
       if (!("mediaSession" in navigator) || !navigator.mediaSession.setPositionState) return;
       const d = this.audio.duration;
       if (!Number.isFinite(d) || d <= 0) return;
       const now = performance.now();
-      if (this._lastPos && now - this._lastPos < 1000) return;
+      if (!force && this._lastPos && now - this._lastPos < 1000) return;
       this._lastPos = now;
       try {
         navigator.mediaSession.setPositionState({
