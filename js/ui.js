@@ -6,6 +6,9 @@
   const ROW_H = 14.9; // in --u units (1% of screen height)
   const VISIBLE = 6;
   const REPO_URL = "https://github.com/p2plabsxyz/peertunes";
+  // A companion tool, for people whose music is sitting in a streaming
+  // playlist rather than in a folder.
+  const ZIPIFY_URL = "https://github.com/p2plabsxyz/zipify-tunes";
   const SHARE_BASE = "peersky://p2p/peertunes/";
 
   // shared art lives under assets/, glyph markup comes from assets/icons.js
@@ -1041,6 +1044,17 @@
           return [
             { label: "Open URL…", sub: "hyper:// ipfs:// https://", chevron: true, action: () => ui.push(ui.urlScreen()) },
             ...uploads,
+            {
+              label: "Zipify Tunes…", sub: "download a playlist to your device first",
+              action: () => ui.dialog({
+                msg: "Open Zipify Tunes?",
+                sub: "A tool for saving a whole playlist as files you can load here. Opens GitHub.",
+                buttons: [
+                  { label: "Open", action: () => { try { window.open(ZIPIFY_URL, "_blank", "noopener"); } catch {} } },
+                  { label: "Cancel" },
+                ],
+              }),
+            },
             { label: "Share Library…", action: () => ui.shareLibrary() },
           { label: "Rescan Sources", value: String(ui.lib.sources.length), action: () => ui.runImport(() => ui.lib.rescan(), "Rescanning") },
           {
