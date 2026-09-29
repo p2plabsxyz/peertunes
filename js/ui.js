@@ -8,7 +8,7 @@
   const REPO_URL = "https://github.com/p2plabsxyz/peertunes";
   // A companion tool, for people whose music is sitting in a streaming
   // playlist rather than in a folder.
-  const ZIPIFY_URL = "https://github.com/p2plabsxyz/zipify-tunes";
+  const ZIPIFY_URL = "https://github.com/akhileshthite/zipify-tunes";
   const SHARE_BASE = "peersky://p2p/peertunes/";
 
   // shared art lives under assets/, glyph markup comes from assets/icons.js
@@ -762,6 +762,12 @@
             { label: "Add Songs…", chevron: true, dim: true, action: () => ui.push(ui.addSongsScreen(id)) },
             { label: "Share This Playlist…", dim: true, action: () => ui.sharePlaylist(id) },
           ];
+          // An imported playlist is a list of addresses until the folder behind
+          // it is on the device. Only offered where something can actually do
+          // the downloading, and only for a playlist that came from a drive.
+          if (window.peerskyKeepOffline && /^hyper:\/\//i.test(p.sourceUrl || "")) {
+            rows.push({ label: "Keep On This Device…", dim: true, action: () => ui.keepPlaylistOffline(p) });
+          }
           rows.push(...tracks.map((t, i) => ({
             label: t.title,
             tnum: i + 1,
@@ -1173,6 +1179,29 @@
       });
     }
 
+    // Ask PeerSky to download the folder this playlist came from, so it plays
+    // with the network off. Importing only ever stored the addresses.
+    async keepPlaylistOffline(pl) {
+      const url = pl && pl.sourceUrl;
+      if (!url) return;
+      const res = await window.peerskyKeepOffline(url).catch(() => null);
+      if (res && res.ok) {
+        this.dialog({
+          msg: res.status === "waiting-for-wifi" ? "Waiting for Wi-Fi" : "Downloading",
+          sub: res.status === "waiting-for-wifi"
+            ? "The songs download as soon as you are on Wi-Fi. Settings shows how it is going."
+            : "The songs are being saved to this device. Settings shows how it is going.",
+          buttons: [{ label: "OK" }],
+        });
+        return;
+      }
+      this.dialog({
+        msg: "Could not keep it here",
+        sub: (res && res.error) || "Nothing answered for that folder.",
+        buttons: [{ label: "OK" }],
+      });
+    }
+
     // sharing publishes the songs to a hyper:// drive, then hands out a
     // peersky://p2p/peertunes/#playlist= link that opens them on any device
     shareLibrary() {
@@ -1406,9 +1435,9 @@
 
     async runImport(fn, label = "Syncing") {
       if (this.lib.busy) return 0;
-      let added = 0, failed = null;
+      let result = { added: 0, found: 0 }, failed = null;
       try {
-        added = await this.runTask(fn, label);
+        result = await this.runTask(fn, label) || result;
       } catch (err) {
         console.warn(err);
         failed = err || new Error("sync failed");
@@ -1437,12 +1466,22 @@
           this.dialog({ msg: "Could not sync", sub: "Check the URL and try again.", buttons: [{ label: "OK" }] });
         }
       } else {
+        const { added, found } = result;
+        const already = Math.max(0, found - added);
+        // "Added 1 song" after a sync of eighteen reads as a failure. It was
+        // true and useless: the other seventeen were already here from a run
+        // that had been interrupted. Say what is in the library now as well.
         this.dialog({
-          msg: added ? `Added ${added} song${added === 1 ? "" : "s"}` : "No new songs found",
+          msg: added
+            ? `Added ${added} song${added === 1 ? "" : "s"}`
+            : found ? "Already up to date" : "No new songs found",
+          sub: already
+            ? `${already} of ${found} ${already === 1 ? "was" : "were"} already in your library`
+            : "",
           buttons: [{ label: "OK" }],
         });
       }
-      return added;
+      return result.added;
     }
 
     // ---------- settings ----------

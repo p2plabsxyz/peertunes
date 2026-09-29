@@ -226,15 +226,16 @@
           label: "Import", action: async () => {
             let first = null;
             await ui.runImport(async () => {
-              let n = 0;
+              let added = 0, found = 0;
               for (const u of urls) {
                 try {
                   const res = await library.importShared(u);
-                  n += res.added;
+                  added += res.added;
+                  found += res.found;
                   if (!first) first = res.playlist;
                 } catch (err) { console.warn(err); }
               }
-              return n;
+              return { added, found };
             }, "Syncing");
             if (first) openPlaylist(first);
           },
