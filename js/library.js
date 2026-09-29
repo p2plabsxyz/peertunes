@@ -64,16 +64,26 @@
   }
 
   // manifest entries are either absolute urls or names inside the folder
+  // Returns the urls, and what the manifest says about each one. The names are
+  // the whole point: with them there is nothing to read off the drive before a
+  // playlist can be listed.
   function resolveManifestFiles(base, manifest) {
     const out = [];
+    const meta = new Map();
     for (const f of manifest.files) {
       const p = f.file;
-      if (/^[a-z][a-z0-9+.-]*:\/\//i.test(p)) { out.push(p); continue; }
-      const clean = p.replace(/^\.\//, "");
-      if (clean.startsWith("/") || clean.split("/").some((seg) => seg === "..")) continue;
-      out.push(base + clean.split("/").map(encodeURIComponent).join("/"));
+      let url;
+      if (/^[a-z][a-z0-9+.-]*:\/\//i.test(p)) {
+        url = p;
+      } else {
+        const clean = p.replace(/^\.\//, "");
+        if (clean.startsWith("/") || clean.split("/").some((seg) => seg === "..")) continue;
+        url = base + clean.split("/").map(encodeURIComponent).join("/");
+      }
+      out.push(url);
+      if (f.title) meta.set(url, { title: f.title, artist: f.artist || "", album: f.album || "" });
     }
-    return out;
+    return { files: out, meta };
   }
 
   // pull direct children out of an html directory listing. Handles relative
@@ -129,6 +139,9 @@
       this._coverUrls = new Map();
       this._groups = null;
       this.busy = false;
+      // Bumped whenever the library is emptied, so artwork still arriving for
+      // songs that no longer exist is dropped instead of writing them back.
+      this._generation = 0;
     }
 
     async open() {
@@ -236,12 +249,15 @@
 
     // shared by addUrl and importShared: pulls tags for every file url and
     // saves the tracks. Returns how many were new plus the ids in order.
-    async _importUrls(fileUrls) {
+    async _importUrls(fileUrls, meta = null) {
       const total = fileUrls.length;
       let done = 0;
       let added = 0;
       let unreachable = 0;
       const ids = new Array(total).fill(null);
+      // Files the manifest already named, so their artwork can be fetched
+      // afterwards rather than holding up the whole import.
+      const artLater = [];
       const jobs = fileUrls.map((url, i) => ({ url, i }));
       // Each job is one ranged read of a file's first 128KB, so the time goes
       // on waiting rather than on the device. Three at a time meant a playlist
@@ -252,7 +268,19 @@
           const id = "u" + hash(job.url);
           try {
             if (!this.tracks.has(id)) {
-              let tags;
+              let tags = meta && meta.get(job.url);
+              if (tags) {
+                // The manifest names it, so nothing has to be read off the
+                // drive to list it. Reading 128KB of every file for tags we
+                // already had is what made a shared playlist take minutes.
+                const track = this._mkTrack(id, "url", tags, { url: job.url });
+                await this._saveTrack(track, null, null);
+                artLater.push({ id, url: job.url, tags });
+                added++;
+                if (this.tracks.has(id)) ids[job.i] = id;
+                this._emitProgress(++done, total, tags.title || "");
+                continue;
+              }
               try {
                 tags = await PT.readTags(await PT.urlSource(job.url));
               } catch (err) {
@@ -280,7 +308,80 @@
       });
       await Promise.all(workers);
       if (added) this._invalidate();
+      // One probe per album rather than per track, and not waited on: the
+      // playlist is already listed and playable while the covers arrive.
+      if (artLater.length) this._coversForLibrary(artLater);
       return { added, ids: ids.filter(Boolean), unreachable };
+    }
+
+    /**
+     * Artwork, after the fact.
+     *
+     * A cover belongs to an album rather than to a track, so one file per
+     * album is read and the rest of that album takes the same picture. For a
+     * playlist off one record that is a single read instead of eighteen.
+     *
+     * Nothing waits on this and nothing depends on it finishing: the songs are
+     * already listed and playable, and a library cleared underneath it stops it.
+     */
+    async _coversForAlbums(entries, apply) {
+      const generation = this._generation;
+      const albums = new Map();
+      for (const entry of entries) {
+        const key = this.albumKeyOf(entry.tags);
+        if (!albums.has(key)) albums.set(key, { key, entries: [] });
+        albums.get(key).entries.push(entry);
+      }
+
+      let changed = false;
+      for (const album of albums.values()) {
+        if (generation !== this._generation) return;
+        let picture = null;
+        // One file speaks for the record. A first file carrying no art rarely
+        // means the others do.
+        try {
+          const tags = await PT.readTags(await PT.urlSource(album.entries[0].url));
+          picture = tags.picture || null;
+        } catch {}
+        if (!picture || generation !== this._generation) continue;
+        try {
+          if (await apply(album.key, picture, album.entries)) changed = true;
+        } catch {}
+      }
+      if (changed && generation === this._generation) this._invalidate();
+    }
+
+    _coversForLibrary(entries) {
+      return this._coversForAlbums(entries, async (coverId, picture, group) => {
+        const have = await idb(this.db, "covers", "readonly", (s) => s.getKey(coverId)).catch(() => null);
+        if (!have) {
+          await idb(this.db, "covers", "readwrite", (s) => s.put(new Blob([picture.data], { type: picture.mime }), coverId));
+        }
+        let changed = false;
+        for (const entry of group) {
+          const track = this.tracks.get(entry.id);
+          if (!track || track.coverId === coverId) continue;
+          track.coverId = coverId;
+          await idb(this.db, "tracks", "readwrite", (s) => s.put(track));
+          changed = true;
+        }
+        return changed;
+      }).catch(() => {});
+    }
+
+    // Play Only never touches the library, so the picture is hung on the
+    // throwaway track rather than stored.
+    _coversForRemote(entries) {
+      return this._coversForAlbums(entries, async (_key, picture, group) => {
+        let url = null;
+        try {
+          url = URL.createObjectURL(new Blob([picture.data], { type: picture.mime }));
+        } catch {
+          return false;
+        }
+        for (const entry of group) entry.track.coverUrl = url;
+        return true;
+      }).catch(() => {});
     }
 
     async _rememberSource(url) {
@@ -294,15 +395,19 @@
       if (!url) return { added: 0, found: 0 };
       this.busy = true;
       try {
+        // A folder published by PeerTunes describes itself, so take the names
+        // from the manifest rather than reading every file to find them.
+        const share = await this.resolveShared(url).catch(() => null);
         const state = {};
-        const files = await this._collectUrls(url, state);
+        const files = share?.files?.length ? share.files : await this._collectUrls(url, state);
+        const meta = share?.meta || null;
         if (!files.length) {
           const err = new Error(state.rootError ? "url unreachable" : "no audio found");
           err.code = state.rootError ? "UNREACHABLE" : "EMPTY";
           err.url = url;
           throw err;
         }
-        const res = await this._importUrls(files);
+        const res = await this._importUrls(files, meta);
         if (!res.ids.length && res.unreachable === files.length) {
           const err = new Error("url unreachable");
           err.code = "UNREACHABLE";
@@ -336,8 +441,8 @@
         if (res.ok) {
           const manifest = parseManifest(await res.json());
           if (manifest) {
-            const files = resolveManifestFiles(base, manifest);
-            if (files.length) return { url, name: manifest.name, files };
+            const { files, meta } = resolveManifestFiles(base, manifest);
+            if (files.length) return { url, name: manifest.name, files, meta };
           }
         }
       } catch {}
@@ -353,7 +458,7 @@
       try {
         const share = await this.resolveShared(url);
         if (!share.files.length) throw new Error("no audio found");
-        const res = await this._importUrls(share.files);
+        const res = await this._importUrls(share.files, share.meta);
         if (!res.ids.length) throw new Error("nothing imported");
         let pl = Array.from(this.playlists.values()).find((p) => p.sourceUrl === share.url);
         if (!pl) pl = await this.createPlaylist(share.name, { sourceUrl: share.url });
@@ -374,8 +479,22 @@
       const share = await this.resolveShared(url);
       const files = share.files.slice(0, cap);
       const tracks = new Array(files.length).fill(null);
-      let done = 0;
-      const jobs = files.map((u, i) => ({ u, i }));
+
+      // Anything the manifest names is playable without reading a byte of it,
+      // so the list is complete and immediate. Reading every file first was
+      // both the wait and the reason songs went missing: one probe that failed
+      // dropped that song out of the playlist entirely.
+      const named = [];
+      const jobs = [];
+      files.forEach((u, i) => {
+        const tags = share.meta && share.meta.get(u);
+        if (!tags) { jobs.push({ u, i }); return; }
+        const t = this._mkTrack("t" + hash(u), "url", tags, { url: u, temp: true });
+        t.coverId = null;
+        tracks[i] = t;
+        named.push({ track: t, url: u, tags });
+      });
+      let done = files.length - jobs.length;
       const workers = Array.from({ length: IMPORT_CONCURRENCY }, async () => {
         while (jobs.length) {
           const job = jobs.shift();
@@ -405,6 +524,9 @@
         }
       });
       await Promise.all(workers);
+      // One read per album, after the fact, so the covers catch up with a
+      // playlist that is already playing.
+      if (named.length) this._coversForRemote(named);
       return { name: share.name, tracks: tracks.filter(Boolean) };
     }
 
@@ -549,6 +671,7 @@
       this.sources = [];
       for (const u of this._coverUrls.values()) if (u) URL.revokeObjectURL(u);
       this._coverUrls.clear();
+      this._generation++;
       this._invalidate();
     }
 
