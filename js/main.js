@@ -286,6 +286,9 @@
       setTimeout(() => splash.remove(), 520);
     }, 650);
 
+    // A first visit hears what this is and how the wheel works before anything else.
+    if (!PT.welcomeSeen()) await PT.showWelcome();
+
     const shared = sharedSources();
     if (shared.length) {
       await offerShared(shared, savedRoutes);

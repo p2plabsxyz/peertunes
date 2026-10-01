@@ -948,6 +948,7 @@
           { label: "Artists", value: String(ui.lib.getArtists().length) },
           { label: "Sources", value: String(ui.lib.sources.length) },
           { label: "Made for PeerSky", value: "hyper://" },
+          { label: "How to Use", chevron: true, action: () => PT.showWelcome() },
         ],
       });
     }

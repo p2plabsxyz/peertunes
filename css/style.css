@@ -773,3 +773,200 @@ body.dropping .drop-hint { display: grid; }
   .cf-cover { transition: none; }
   .sync .arrows { animation-duration: 3s; }
 }
+
+/* ---------- welcome ---------- */
+
+.welcome {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(10, 11, 13, 0.42);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  animation: wl-in 0.22s ease-out;
+}
+.welcome.bye { opacity: 0; transition: opacity 0.2s ease; }
+
+.wl-card {
+  width: min(92vw, 360px);
+  max-height: 92%;
+  overflow: auto;
+  background: linear-gradient(180deg, var(--lcd-a), var(--lcd-b));
+  color: var(--ink);
+  border-radius: 18px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(0, 0, 0, 0.08);
+  padding: 22px 22px 18px;
+  text-align: center;
+  font-size: 15px;
+  line-height: 1.45;
+}
+.wl-card h1 { font-size: 22px; margin: 10px 0 6px; letter-spacing: -0.01em; }
+.wl-card p { margin: 0 0 10px; color: var(--ink-dim); }
+.wl-card b { color: var(--ink); }
+.wl-card .wl-lead { font-size: 16px; color: var(--ink); font-weight: 600; }
+
+.wl-moves { list-style: none; text-align: left; margin: 4px auto 6px; max-width: 290px; }
+.wl-moves li { position: relative; padding: 5px 0 5px 18px; color: var(--ink-dim); }
+.wl-moves li::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 12px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--sel-b);
+}
+
+.wl-dots { display: flex; justify-content: center; gap: 6px; margin: 12px 0 14px; }
+.wl-dots span { width: 7px; height: 7px; border-radius: 50%; background: rgba(0, 0, 0, 0.18); }
+.wl-dots span.on { background: var(--sel-b); }
+
+.wl-actions { display: flex; gap: 10px; justify-content: center; }
+.wl-actions button {
+  font: inherit;
+  font-weight: 600;
+  border: 0;
+  border-radius: 12px;
+  padding: 11px 18px;
+  min-height: 44px;
+  cursor: pointer;
+}
+.wl-skip { background: rgba(0, 0, 0, 0.06); color: var(--ink); }
+.wl-next { flex: 1; max-width: 220px; color: #fff; background: linear-gradient(180deg, var(--sel-a), var(--sel-b)); }
+
+.wl-art { height: 120px; display: flex; align-items: center; justify-content: center; position: relative; }
+
+/* what it is: songs travelling from a drive to the iPod */
+.wl-device {
+  position: relative;
+  display: block;
+  width: 54px;
+  height: 72px;
+  border-radius: 10px;
+  background: linear-gradient(150deg, var(--shell-a), var(--shell-c));
+  box-shadow: inset 0 0 0 1px var(--shell-edge);
+}
+.wl-drive { width: 66px; height: 46px; border-radius: 8px; }
+.wl-drive::after {
+  content: "hyper://";
+  position: absolute;
+  left: 50%;
+  bottom: -20px;
+  transform: translateX(-50%);
+  font-size: 11px;
+  color: var(--ink-dim);
+}
+.wl-pod::before {
+  content: "";
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  top: 8px;
+  height: 22px;
+  border-radius: 3px;
+  background: linear-gradient(180deg, var(--lcd-a), var(--lcd-b));
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
+}
+.wl-pod b {
+  position: absolute;
+  left: 50%;
+  bottom: 8px;
+  width: 26px;
+  height: 26px;
+  margin-left: -13px;
+  border-radius: 50%;
+  background: linear-gradient(180deg, var(--wheel-a), var(--wheel-b));
+  box-shadow: inset 0 0 0 1px var(--shell-edge);
+}
+.wl-wire {
+  position: relative;
+  display: block;
+  width: 88px;
+  height: 2px;
+  margin: 0 8px;
+  background: repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.2) 0 6px, transparent 6px 10px);
+}
+.wl-wire i {
+  position: absolute;
+  top: -4px;
+  left: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--sel-b);
+  opacity: 0;
+  animation: wl-travel 2.4s ease-in-out infinite;
+}
+.wl-wire i:nth-child(2) { animation-delay: 0.8s; }
+.wl-wire i:nth-child(3) { animation-delay: 1.6s; }
+
+/* the wheel: a finger circling, and the center pressed now and then */
+.wl-ring {
+  position: relative;
+  display: block;
+  width: 112px;
+  height: 112px;
+  border-radius: 50%;
+  background: linear-gradient(180deg, var(--wheel-a), var(--wheel-b));
+  box-shadow: inset 0 0 0 1px var(--shell-edge);
+}
+.wl-menu {
+  position: absolute;
+  top: 9px;
+  left: 0;
+  right: 0;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--wheel-label);
+}
+.wl-glyph { position: absolute; display: flex; width: 16px; height: 12px; color: var(--wheel-label); }
+.wl-glyph svg { width: 100%; height: 100%; fill: currentColor; }
+.wl-prev { left: 8px; top: 50%; margin-top: -6px; }
+.wl-next-icon { right: 8px; top: 50%; margin-top: -6px; }
+.wl-play { bottom: 9px; left: 50%; margin-left: -8px; }
+.wl-arm { position: absolute; inset: 0; animation: wl-orbit 3.2s linear infinite; }
+.wl-arm i {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  width: 20px;
+  height: 20px;
+  margin-left: -10px;
+  border-radius: 50%;
+  background: rgba(23, 95, 212, 0.55);
+  box-shadow: 0 0 0 4px rgba(23, 95, 212, 0.18);
+}
+.wl-center {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 40px;
+  height: 40px;
+  margin: -20px 0 0 -20px;
+  border-radius: 50%;
+  background: linear-gradient(180deg, var(--wheel-center-a), var(--wheel-center-b));
+  box-shadow: inset 0 0 0 1px var(--shell-edge);
+  animation: wl-press 3.2s ease-in-out infinite;
+}
+
+@keyframes wl-in { from { opacity: 0; } }
+@keyframes wl-travel {
+  0% { transform: translateX(0); opacity: 0; }
+  15%, 85% { opacity: 1; }
+  100% { transform: translateX(78px); opacity: 0; }
+}
+@keyframes wl-orbit { to { transform: rotate(360deg); } }
+@keyframes wl-press {
+  0%, 80%, 100% { transform: scale(1); }
+  88% { transform: scale(0.86); box-shadow: inset 0 0 0 1px var(--shell-edge), 0 0 0 6px rgba(23, 95, 212, 0.2); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .welcome, .wl-wire i, .wl-arm, .wl-center { animation: none; }
+  .wl-wire i:first-child { opacity: 1; transform: translateX(39px); }
+}

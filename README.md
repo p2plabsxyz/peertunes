@@ -29,6 +29,8 @@ Want to download your cloud songs playlist and own it locally? Use [zipify-tunes
 
 ## How to use
 
+The first visit opens with two short cards: what PeerTunes is, and how the click wheel works. They are under `About -> How to Use` any time after that.
+
 Open `index.html`. It also works straight from `file://`, no server needed. On desktop the iPod scales with your window. On a phone it fills the whole screen.
 
 The wheel works like the real one:
@@ -88,6 +90,7 @@ No dependencies, no bundler:
 - `js/wheel.js` click wheel input and the clicker sound (WebAudio, synthesized)
 - `js/ui.js` screens, lists, Cover Flow, now playing
 - `js/main.js` boot and wiring
+- `js/welcome.js` the two welcome cards shown on a first visit
 - `assets/` icons (`icons.js`, kept as strings so glyphs can follow the shell theme), default cover, grain texture. The favicon comes from `peersky://static/assets/peertunes.ico` inside PeerSky
 
 Console API for scripting: `PeerTunes.addUrl("hyper://…")`, `PeerTunes.addFiles([...])`, `PeerTunes.player`, `PeerTunes.library`.
