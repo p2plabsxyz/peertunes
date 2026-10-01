@@ -4,7 +4,7 @@
 
 <h1 align="center">PeerTunes</h1>
 
-<p align="center">A p2p iPod for your local music. One static page, no build, no server, no tracking.<br>Made for <a href="https://github.com/p2plabsxyz/peersky-browser">PeerSky Browser</a>, works in any modern browser too.</p>
+<p align="center">A p2p iPod for your local music. One static page, no build, no server, no tracking.<br>Made for <a href="https://github.com/p2plabsxyz/peersky-browser">PeerSky Browser</a> and built into <a href="https://github.com/p2plabsxyz/peersky-mobile">PeerSky Mobile</a> on iOS and Android (<a href="https://github.com/p2plabsxyz/peersky-mobile/blob/main/docs/peertunes.md">how it runs on the phone</a>). Works in any modern browser too.</p>
 
 ## What it does
 
