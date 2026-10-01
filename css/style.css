@@ -64,13 +64,13 @@ body {
 }
 
 .stage {
-  /* Chained from html and body rather than vh or dvh. A phone browser means
-     three different things by those, and mixing them left the iPod centred in
-     a box taller than the screen, with a strip of background under it. */
+  /* 100% tracks the box this element actually gets. 100vh is the window, which
+     inside the app is taller than the WebView. */
+  height: 100%;
   min-height: 100%;
   display: grid;
   place-items: center;
-  padding: 2vh 0;
+  padding: 0;
 }
 
 /* ---------- body shell ---------- */
@@ -78,7 +78,16 @@ body {
 .ipod {
   position: relative;
   /* scales with the window, so it stays big on big screens */
-  width: min(94vw, 56vh);
+  /* Size from the height, because that is the axis that runs out first. Width
+     then follows the ratio. Capping the height with max-height does not work:
+     with an explicit width the box just gets squashed and the wheel still
+     overflows. 156vw is 94vw expressed as a height through the ratio, so the
+     body never grows wider than the screen either.
+     dvh, not vh: inside the app the WebView sits under a toolbar and above the
+     system bars, and vh measures the window rather than that box, which is why
+     Android clipped the wheel and iOS did not. */
+  height: min(94vh, 156vw);
+  height: min(94dvh, 156vw);
   aspect-ratio: 500 / 830;
   border-radius: 7.5% / 4.5%;
   background: linear-gradient(150deg, var(--shell-a) 0%, var(--shell-b) 60%, var(--shell-c) 100%);
@@ -716,8 +725,11 @@ body.dropping .drop-hint { display: grid; }
 /* ---------- phone: the iPod becomes the phone ---------- */
 
 @media (max-width: 760px) and (orientation: portrait) {
-  .stage { padding: 0; height: 100%; }
+  .stage { padding: 0; }
   .ipod {
+    /* 100%, for the same reason the stage uses it: inside the app the window
+       is taller than the WebView, so a body sized in vh or dvh stopped short
+       and left a strip of background under it. */
     width: 100%;
     height: 100%;
     aspect-ratio: auto;
@@ -734,7 +746,7 @@ body.dropping .drop-hint { display: grid; }
    the height of the phone, which left a screen a couple of centimetres across
    with the wheel taking everything else. */
 @media (orientation: landscape) and (max-height: 600px) {
-  .stage { padding: 0; height: 100%; }
+  .stage { padding: 0; }
   .ipod {
     width: 100%;
     height: 100%;

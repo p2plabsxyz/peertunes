@@ -60,10 +60,12 @@ test("a seek from the lock screen is reported back straight away", () => {
   assert.equal(positions.at(-1).position, 120);
 });
 
-test("a seek past the end lands on the end, not past it", () => {
+// Just short of the end, the same as the scrubber in the app, so dragging all
+// the way across plays out the last moment instead of skipping the song.
+test("a seek past the end lands just short of the end, not past it", () => {
   const { audio, handlers } = loadPlayer();
   handlers.seekto({ seekTime: 9999 });
-  assert.equal(audio.currentTime, 200);
+  assert.equal(audio.currentTime, 199.8);
   handlers.seekto({ seekTime: -5 });
   assert.equal(audio.currentTime, 0);
 });

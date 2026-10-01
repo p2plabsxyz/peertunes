@@ -1149,7 +1149,7 @@
           ];
           if (phone) uploads.reverse();
           return [
-            { label: "Open URL…", sub: "hyper:// ipfs:// https://", chevron: true, action: () => ui.push(ui.urlScreen()) },
+            { label: "Open URL…", sub: PT.P2P_SCHEMES.includes("ipfs") ? "hyper:// ipfs:// https://" : "hyper:// https://", chevron: true, action: () => ui.push(ui.urlScreen()) },
             ...uploads,
             {
               label: "Zipify Tunes…", sub: "download a playlist to your device first",
@@ -1263,18 +1263,25 @@
         label: "Copy",
         action: async () => {
           const ok = await copyText(link);
+          // the link stays on screen after a copy, so it is never lost the
+          // moment the first dialog closes
           this.dialog({
             msg: ok ? "Link copied" : "Could not copy",
-            sub: ok ? link : "Select the link below and copy it by hand.\n" + link,
-            buttons: [{ label: "OK" }],
+            sub: ok ? "Send it to a friend.\n" + link : "Select the link below and copy it by hand.\n" + link,
+            buttons: [{ label: "Done" }],
           });
         },
       }];
       if (typeof navigator.share === "function") {
         buttons.push({ label: "Share…", action: () => { navigator.share({ title: "PeerTunes", url: link }).catch(() => {}); } });
       }
-      buttons.push({ label: "OK" });
-      this.dialog({ msg: "Share link ready", sub: link, buttons, defaultSel: 0 });
+      buttons.push({ label: "Done" });
+      this.dialog({
+        msg: "Share it with other peers!",
+        sub: "Anyone with this link can listen, straight from the source.\n" + link,
+        buttons,
+        defaultSel: 0,
+      });
     }
 
     urlScreen() {
@@ -1288,7 +1295,7 @@
             <div class="cap">Load music from a URL</div>
             <input type="url" spellcheck="false" autocapitalize="off" autocomplete="off" placeholder="hyper://…">
             <button type="button" class="urlscan">${PT.icons.qr}<span>Scan QR Code</span></button>
-            <div class="hint">Point it at a hyper:// drive folder with songs, an ipfs:// folder, or a direct audio link. Press the center button or Enter to sync.</div>`;
+            <div class="hint">Point it at a hyper:// drive folder with songs${PT.P2P_SCHEMES.includes("ipfs") ? ", an ipfs:// folder," : ""} or a direct audio link. Press the center button or Enter to sync.</div>`;
           page.appendChild(box);
           this.input = box.querySelector("input");
           this.input.addEventListener("keydown", (e) => {
@@ -1350,6 +1357,34 @@
         },
         destroy() { stop(); },
         async start(video) {
+          // Inside PeerSky the shell hands us its own camera, which is the same
+          // scanner the rest of the app uses and works where BarcodeDetector
+          // does not exist. Fall back to the web API outside the app.
+          if (typeof window.peerskyScanQr === "function") {
+            video.remove();
+            this.note.textContent = "Opening the camera...";
+            let scanned = null;
+            try {
+              scanned = await window.peerskyScanQr();
+            } catch {
+              scanned = null;
+            }
+            if (stopped) return;
+            // Validate exactly like the web path does, so a QR code holding
+            // something that is not a supported URL is refused either way.
+            const url = scanned ? PT.readScannedUrl(scanned) : null;
+            if (url) {
+              stop();
+              ui.wheel.tick(1.2);
+              onResult(url);
+              return;
+            }
+            this.note.textContent = scanned
+              ? "That QR code is not a link PeerTunes can play."
+              : "Nothing scanned. Type the URL instead.";
+            return;
+          }
+
           const Detector = window.BarcodeDetector;
           if (!Detector || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
             this.note.textContent = "This browser cannot scan QR codes. Type the URL instead.";
@@ -1447,12 +1482,14 @@
         const p2p = !!schemeMatch;
         const scheme = schemeMatch ? schemeMatch[1].toLowerCase() : "";
         if (failed.code === "UNREACHABLE" && p2p) {
-          // a page already on a p2p protocol clearly has hyper support
-          const inP2p = /^(hyper|ipfs|ipns|peersky):$/i.test(location.protocol);
+          // Inside PeerSky the protocol works, so nothing answering means
+          // nobody is seeding it right now.
+          const inPeerSky = /^(hyper|ipfs|ipns|peersky):$/i.test(location.protocol) ||
+            typeof window.peerskyHyperAsset === "function";
           this.dialog({
             msg: "Can't reach that URL",
-            sub: inP2p
-              ? `Nothing answered on ${scheme}://. The source may not be seeded, or this build may not carry a ${scheme}:// handler.`
+            sub: inPeerSky
+              ? `Nothing answered on ${scheme}://. Nobody may be seeding it right now, or the link may be wrong.`
               : `This browser does not speak ${scheme}://. Open PeerTunes inside PeerSky, or use an http link here.`,
             buttons: [{ label: "OK" }],
           });

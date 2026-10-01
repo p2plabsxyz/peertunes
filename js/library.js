@@ -115,10 +115,18 @@
     return out;
   }
 
+  // The p2p schemes this page can read. A host that reads fewer says so in
+  // window.peerskyProtocols: PeerSky Mobile reads hyper:// only.
+  const P2P_SCHEMES = (() => {
+    const host = typeof window !== "undefined" ? window.peerskyProtocols : null;
+    const list = Array.isArray(host) ? host.filter((s) => /^(hyper|ipfs|ipns)$/.test(s)) : [];
+    return list.length ? list : ["hyper", "ipfs", "ipns"];
+  })();
+
   // What a scanned QR code may legitimately contain: a music source, or a
   // PeerTunes share link carrying one. Anything else is rejected rather than
   // handed to fetch, since a QR code is untrusted input.
-  const SCANNABLE_SCHEME = /^(hyper|ipfs|ipns|https?):\/\//i;
+  const SCANNABLE_SCHEME = new RegExp(`^(${P2P_SCHEMES.join("|")}|https?):\\/\\/`, "i");
   const MAX_SCANNED_URL_LENGTH = 4096;
 
   function readScannedUrl(text) {
@@ -907,4 +915,6 @@
   PT.resolveManifestFiles = resolveManifestFiles;
   PT.parseListingHtml = parseListingHtml;
   PT.readScannedUrl = readScannedUrl;
+  PT.P2P_SCHEMES = P2P_SCHEMES;
+  PT.SOURCE_SCHEME = SCANNABLE_SCHEME;
 })(typeof window !== "undefined" ? (window.PT = window.PT || {}) : module.exports);
