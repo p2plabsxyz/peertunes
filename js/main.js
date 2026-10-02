@@ -93,9 +93,16 @@
     show($("sb-pause"), player.current() && !player.playing);
   });
 
-  // Show the bluetooth mark whenever sound is routed somewhere external.
+  // Show the bluetooth mark whenever sound is routed somewhere external. A host
+  // that can see the route, like PeerSky on a phone, says so in
+  // window.peerskyAudioRoute, because a WebView cannot list the outputs.
   async function updateBluetooth() {
     const el = $("sb-bt");
+    const route = window.peerskyAudioRoute;
+    if (route && typeof route.external === "boolean") {
+      show(el, route.external);
+      return;
+    }
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
         show(el, false);
@@ -111,6 +118,7 @@
   if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
     navigator.mediaDevices.addEventListener("devicechange", updateBluetooth);
   }
+  window.addEventListener("peersky-audio-route", updateBluetooth);
   player.addEventListener("state", updateBluetooth);
   updateBluetooth();
 
