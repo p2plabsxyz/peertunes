@@ -1,5 +1,5 @@
 // Music library. Keeps tracks, covers, playlists and uploaded audio blobs in
-// IndexedDB so the iPod stays synced between visits. Also handles publishing
+// IndexedDB so the library stays put between visits. Also handles publishing
 // a share to a hyper:// drive and loading someone else's share.
 
 (function (PT) {
@@ -32,6 +32,11 @@
 
   // How many files are read at once while importing from a URL.
   const IMPORT_CONCURRENCY = 8;
+  // How often a subfolder that failed to list is tried again, and how long the
+  // wait grows each time.
+  const SUBFOLDER_RETRIES = 2;
+  const SUBFOLDER_RETRY_MS = 700;
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
   function buildManifest(name, entries) {
     return {
@@ -451,10 +456,16 @@
         // was already here is still a source, and only remembering it when
         // something was new left it out of Rescan for good.
         if (remember) await this._rememberSource(url);
+        // A host that can keep a drive on the device does it now. Starting the
+        // download while listings were still being read slowed them down, and
+        // nested folders came back empty.
+        if (res.ids.length && /^hyper:\/\//i.test(url) && typeof window.peerskyKeepOffline === "function") {
+          Promise.resolve(window.peerskyKeepOffline(url)).catch(() => {});
+        }
         // How many songs this source holds, and how many of them were new. The
         // two are different the moment an import is run twice, or resumed after
         // being interrupted, and reporting only the second read as a failure.
-        return { added: res.added, found: res.ids.length };
+        return { added: res.added, found: res.ids.length, partial: Boolean(state.partial) };
       } finally {
         this.busy = false;
       }
@@ -631,11 +642,12 @@
         return found;
       }
       const seen = new Set();
-      const queue = [{ url: rootUrl.endsWith("/") ? rootUrl : rootUrl + "/", depth: 0 }];
+      const queue = [{ url: rootUrl.endsWith("/") ? rootUrl : rootUrl + "/", depth: 0, tries: 0 }];
       while (queue.length && found.length < 5000) {
         const item = queue.shift();
-        if (seen.has(item.url) || item.depth > 6) continue;
+        if ((!item.tries && seen.has(item.url)) || item.depth > 6) continue;
         seen.add(item.url);
+        if (item.tries) await sleep(SUBFOLDER_RETRY_MS * item.tries);
         let entries;
         try {
           entries = await this._listDir(item.url);
@@ -645,12 +657,19 @@
             const res = await fetch(PT.mapP2p(rootUrl)).catch(() => null);
             if (res && res.ok && (res.headers.get("content-type") || "").startsWith("audio/")) return [rootUrl];
             state.rootError = err;
+          } else if (item.tries < SUBFOLDER_RETRIES) {
+            // A folder deep in a drive nobody has read yet can time out while
+            // its parent answered. It goes to the back of the queue for
+            // another go, instead of its songs going missing until a Rescan.
+            queue.push({ ...item, tries: item.tries + 1 });
+          } else {
+            state.partial = true;
           }
           continue;
         }
         for (const name of entries) {
           if (!name || name.startsWith(".")) continue;
-          if (name.endsWith("/")) queue.push({ url: item.url + name, depth: item.depth + 1 });
+          if (name.endsWith("/")) queue.push({ url: item.url + name, depth: item.depth + 1, tries: 0 });
           else if (PT.isAudioName(name)) found.push(item.url + encodeURIComponent(decodeSafe(name)));
         }
       }
@@ -659,7 +678,10 @@
 
     // hypercore-fetch style JSON listing, with an html index fallback
     async _listDir(url) {
-      const res = await fetch(PT.mapP2p(url), { headers: { Accept: "application/json" } });
+      // A hyper:// folder holding index.html or README.md answers with that
+      // file unless asked for the listing, and its songs were never found.
+      const listUrl = /^hyper:\/\//i.test(url) ? url + (url.includes("?") ? "&" : "?") + "noResolve" : url;
+      const res = await fetch(PT.mapP2p(listUrl), { headers: { Accept: "application/json" } });
       if (!res.ok) throw new Error(`listing ${res.status}`);
       const ct = res.headers.get("content-type") || "";
       const normalize = (data) => data
@@ -684,15 +706,16 @@
     }
 
     async rescan() {
-      let added = 0, found = 0;
+      let added = 0, found = 0, partial = false;
       for (const s of this.sources) {
         try {
           const res = await this.addUrl(s.url, { remember: false });
           added += res.added;
           found += res.found;
+          partial = partial || res.partial;
         } catch {}
       }
-      return { added, found };
+      return { added, found, partial };
     }
 
     async clear() {

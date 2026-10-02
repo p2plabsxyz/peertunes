@@ -1324,7 +1324,7 @@
     }
 
     // Point the camera at a QR code holding a music URL or a share link.
-    // Runs inside the LCD, so the iPod look survives.
+    // Runs inside the LCD, so the player's look survives.
     scanScreen(onResult) {
       const ui = this;
       let stream = null;
@@ -1504,18 +1504,19 @@
           this.dialog({ msg: "Could not sync", sub: "Check the URL and try again.", buttons: [{ label: "OK" }] });
         }
       } else {
-        const { added, found } = result;
+        const { added, found, partial } = result;
         const already = Math.max(0, found - added);
         // "Added 1 song" after a sync of eighteen reads as a failure. It was
         // true and useless: the other seventeen were already here from a run
         // that had been interrupted. Say what is in the library now as well.
+        const notes = [];
+        if (already) notes.push(`${already} of ${found} ${already === 1 ? "was" : "were"} already in your library`);
+        if (partial) notes.push("Some folders did not answer yet, so Rescan Sources later");
         this.dialog({
           msg: added
             ? `Added ${added} song${added === 1 ? "" : "s"}`
             : found ? "Already up to date" : "No new songs found",
-          sub: already
-            ? `${already} of ${found} ${already === 1 ? "was" : "were"} already in your library`
-            : "",
+          sub: notes.join(". "),
           buttons: [{ label: "OK" }],
         });
       }

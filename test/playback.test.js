@@ -173,6 +173,10 @@ test("an import says how many were new and how many were already here", () => {
 
     await runImport.call(ui, async () => ({ added: 0, found: 0 }));
     assert.equal(messages.at(-1).msg, "No new songs found");
+
+    // A folder that never answered is said out loud, not left to look empty.
+    await runImport.call(ui, async () => ({ added: 3, found: 5, partial: true }));
+    assert.equal(messages.at(-1).sub, "2 of 5 were already in your library. Some folders did not answer yet, so Rescan Sources later");
   })();
 });
 

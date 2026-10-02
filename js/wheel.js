@@ -1,5 +1,5 @@
 // Click wheel input. Circular drags scroll, taps hit the five buttons,
-// every real move makes the little iPod click.
+// every real move makes the little wheel click.
 
 (function (PT) {
   "use strict";

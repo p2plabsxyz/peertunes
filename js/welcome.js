@@ -1,5 +1,5 @@
 // First visit: what PeerTunes is, then how the wheel works. Two small cards
-// over the iPod, shown once, and again from About whenever someone asks.
+// over the player, shown once, and again from About whenever someone asks.
 
 (function (PT) {
   "use strict";
@@ -14,7 +14,7 @@
         <span class="wl-device wl-pod"><b></b></span>
       </div>`,
       title: "PeerTunes",
-      body: `<p class="wl-lead">An iPod for your own music.</p>
+      body: `<p class="wl-lead">A classic music player for your own songs.</p>
         <p>Play songs from a <b>hyper://</b> drive, a folder on this device, or a playlist a friend shares.
         The music comes straight from whoever has it: no account, no server, no tracking.</p>`,
     },
