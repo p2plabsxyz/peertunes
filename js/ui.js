@@ -1545,6 +1545,11 @@
             label: "Clicker", value: s.clicker ? "On" : "Off",
             action: () => { s.clicker = !s.clicker; ui.wheel.clicker = s.clicker; commit(); },
           },
+          // The buzz on each turn of the wheel, apart from its sound.
+          ...(PT.ClickWheel.canHaptic() ? [{
+            label: "Haptics", value: s.haptics ? "On" : "Off",
+            action: () => { s.haptics = !s.haptics; ui.wheel.haptics = s.haptics; commit(); },
+          }] : []),
           {
             label: "Shell", value: s.shell === "black" ? "Black" : "Silver",
             action: () => {

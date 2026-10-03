@@ -12,6 +12,7 @@
       this.el = el;
       this.centerEl = centerEl;
       this.clicker = true;
+      this.haptics = true;
       this._ctx = null;
       this._lastClick = 0;
       this._drag = null;
@@ -155,10 +156,13 @@
     }
 
     tick(gainMul = 1) {
-      if (!this.clicker) return;
+      // Heard and felt are separate settings, so either can be off alone.
+      if (!this.clicker && !this.haptics) return;
       const now = performance.now();
       if (now - this._lastClick < 14) return;
       this._lastClick = now;
+      if (this.haptics && this._touched) this._haptic(gainMul > 1 ? "medium" : "light");
+      if (!this.clicker) return;
       this._unlockAudio();
       const ctx = this._ctx;
       if (!ctx || !this._clickBuf) return;
@@ -173,7 +177,18 @@
         srcNode.connect(hp).connect(g).connect(ctx.destination);
         srcNode.start();
       } catch {}
-      if (this._touched) this._haptic(gainMul > 1 ? "medium" : "light");
+    }
+
+    // Something here can buzz: PeerSky on a phone, or a touch screen with the
+    // web's vibration. A computer has nothing to feel, so no setting for it.
+    static canHaptic() {
+      try {
+        if (typeof window.peerskyHaptic === "function") return true;
+        return typeof navigator.vibrate === "function" &&
+          !!window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
+      } catch {
+        return false;
+      }
     }
 
     // A click you can feel as well as hear. WKWebView has no navigator.vibrate

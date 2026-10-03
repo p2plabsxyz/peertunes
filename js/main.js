@@ -9,7 +9,7 @@
   let stored = {};
   try { stored = JSON.parse(localStorage.getItem("peertunes-settings") || "{}"); } catch {}
   const settings = Object.assign(
-    { clicker: true, shell: "silver", shuffle: false, repeat: "off", dim: true },
+    { clicker: true, haptics: true, shell: "silver", shuffle: false, repeat: "off", dim: true },
     stored,
   );
   const saveSettings = () => {
@@ -31,6 +31,7 @@
   player.shuffle = settings.shuffle;
   player.repeat = settings.repeat;
   wheel.clicker = settings.clicker;
+  wheel.haptics = settings.haptics;
 
   const ui = new PT.UI({
     body: $("screen-body"),
