@@ -1,7 +1,7 @@
 {
   "name": "PeerTunes",
   "short_name": "PeerTunes",
-  "description": "A p2p iPod for your local music.",
+  "description": "A p2p music player for your own music.",
   "start_url": "./index.html",
   "display": "standalone",
   "orientation": "portrait",

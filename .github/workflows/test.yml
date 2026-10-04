@@ -38,6 +38,7 @@ jobs:
           node --check js/wheel.js
           node --check js/ui.js
           node --check js/main.js
+          node --check js/welcome.js
           node --check assets/icons.js
 
       # No dependencies and the tests build their own audio fixtures, so the

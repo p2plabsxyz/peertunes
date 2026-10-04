@@ -161,11 +161,20 @@
       }
     }
 
-    // Jump to an absolute position, used by the touch scrubber.
-    seekTo(sec) {
+    // Jump to an absolute position: the touch scrubber, and the one on the
+    // lock screen. fastSeek is what the system asks for mid-drag, cheaper, with
+    // the exact landing settled by the seek that ends it.
+    seekTo(sec, fast = false) {
       const d = this.audio.duration;
       if (!Number.isFinite(d) || d <= 0) return;
-      this.audio.currentTime = Math.min(Math.max(0, sec), Math.max(0, d - 0.2));
+      const target = Math.min(Math.max(0, sec), Math.max(0, d - 0.2));
+      try {
+        if (fast && typeof this.audio.fastSeek === "function") this.audio.fastSeek(target);
+        else this.audio.currentTime = target;
+      } catch {
+        return;
+      }
+      this._positionState(true);
       this.dispatchEvent(new CustomEvent("time"));
     }
 
@@ -173,7 +182,7 @@
       const d = this.audio.duration;
       if (!Number.isFinite(d)) return;
       // Through the same path as a drag, so the system hears about it too.
-      this._seekTo(Math.min(Math.max(0, this.audio.currentTime + sec), d - 0.2));
+      this.seekTo(this.audio.currentTime + sec);
     }
 
     setVolume(v) {
@@ -201,13 +210,12 @@
       safe("previoustrack", () => this.prev());
       safe("nexttrack", () => this.next());
       // The system scrubber moves on what we last reported, not on what the
-      // audio element is doing. Reporting the new position is throttled to once
-      // a second, so a drag that landed inside that second was answered with
-      // the old position and the scrubber sprang back to where it started.
-      // Every seek pushes the position straight away instead.
+      // audio element is doing, and reporting is throttled to once a second. A
+      // drag that landed inside that second was answered with the old position
+      // and the scrubber sprang straight back. Every seek reports at once.
       safe("seekto", (d) => {
         if (d.seekTime == null) return;
-        this._seekTo(d.seekTime, d.fastSeek === true);
+        this.seekTo(d.seekTime, d.fastSeek === true);
       });
       safe("seekbackward", (d) => this.seekBy(-(d.seekOffset || 10)));
       safe("seekforward", (d) => this.seekBy(d.seekOffset || 10));
@@ -229,22 +237,6 @@
           artwork,
         });
       } catch {}
-    }
-
-    // Moving the playhead, from the lock screen or from the app. fastSeek is
-    // what the system asks for mid-drag: cheaper, and the exact landing is
-    // settled by the final seekto.
-    _seekTo(seconds, fast = false) {
-      const d = this.audio.duration;
-      const target = Math.max(0, Number.isFinite(d) && d > 0 ? Math.min(seconds, d) : seconds);
-      try {
-        if (fast && typeof this.audio.fastSeek === "function") this.audio.fastSeek(target);
-        else this.audio.currentTime = target;
-      } catch {
-        return;
-      }
-      this._positionState(true);
-      this.dispatchEvent(new CustomEvent("time"));
     }
 
     _positionState(force = false) {

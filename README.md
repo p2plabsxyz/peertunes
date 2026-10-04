@@ -4,7 +4,7 @@
 
 <h1 align="center">PeerTunes</h1>
 
-<p align="center">A p2p iPod for your local music. One static page, no build, no server, no tracking.<br>Made for <a href="https://github.com/p2plabsxyz/peersky-browser">PeerSky Browser</a>, works in any modern browser too.</p>
+<p align="center">A p2p music player for your own music, with a click wheel. One static page, no build, no server, no tracking.<br>Made for <a href="https://github.com/p2plabsxyz/peersky-browser">PeerSky Browser</a> and built into <a href="https://github.com/p2plabsxyz/peersky-mobile">PeerSky Mobile</a> on iOS and Android (<a href="https://github.com/p2plabsxyz/peersky-mobile/blob/main/docs/peertunes.md">how it runs on the phone</a>). Works in any modern browser too.</p>
 
 ## What it does
 
@@ -13,7 +13,7 @@
 - Reads tags right from the files: MP3 (ID3v2.2/2.3/2.4 and ID3v1), FLAC, M4A, OGG/Opus, WAV. Any normally tagged song works, embedded covers included
 - Shows a default cover when a song has none, and names an album after its folder when the file carries no album tag
 - Albums open in Cover Flow. Spin the wheel and the covers flip in 3D, like the good old days
-- Artists, Songs and Genres as classic lists, sorted like an iPod would
+- Artists, Songs and Genres as classic lists, sorted the way classic players did
 - Custom playlists, with the On-The-Go gesture: hold the center button on a song to file it away
 - Scan a QR code to load a drive or a share link, instead of typing a long `hyper://` key
 - Touch and hold the progress bar to scrub, so you can jump to any point in a song
@@ -29,7 +29,9 @@ Want to download your cloud songs playlist and own it locally? Use [zipify-tunes
 
 ## How to use
 
-Open `index.html`. It also works straight from `file://`, no server needed. On desktop the iPod scales with your window. On a phone it fills the whole screen.
+The first visit opens with two short cards: what PeerTunes is, and how the click wheel works. They are under `About -> How to Use` any time after that.
+
+Open `index.html`. It also works straight from `file://`, no server needed. On desktop the player scales with your window. On a phone it fills the whole screen.
 
 The wheel works like the real one:
 
@@ -88,6 +90,7 @@ No dependencies, no bundler:
 - `js/wheel.js` click wheel input and the clicker sound (WebAudio, synthesized)
 - `js/ui.js` screens, lists, Cover Flow, now playing
 - `js/main.js` boot and wiring
+- `js/welcome.js` the two welcome cards shown on a first visit
 - `assets/` icons (`icons.js`, kept as strings so glyphs can follow the shell theme), default cover, grain texture. The favicon comes from `peersky://static/assets/peertunes.ico` inside PeerSky
 
 Console API for scripting: `PeerTunes.addUrl("hyper://…")`, `PeerTunes.addFiles([...])`, `PeerTunes.player`, `PeerTunes.library`.

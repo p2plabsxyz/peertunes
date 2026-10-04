@@ -60,10 +60,12 @@ test("a seek from the lock screen is reported back straight away", () => {
   assert.equal(positions.at(-1).position, 120);
 });
 
-test("a seek past the end lands on the end, not past it", () => {
+// Just short of the end, the same as the scrubber in the app, so dragging all
+// the way across plays out the last moment instead of skipping the song.
+test("a seek past the end lands just short of the end, not past it", () => {
   const { audio, handlers } = loadPlayer();
   handlers.seekto({ seekTime: 9999 });
-  assert.equal(audio.currentTime, 200);
+  assert.equal(audio.currentTime, 199.8);
   handlers.seekto({ seekTime: -5 });
   assert.equal(audio.currentTime, 0);
 });
@@ -128,6 +130,53 @@ test("the wheel asks native for a haptic before falling back to the web", () => 
   assert.deepEqual(vibrated, []);
 });
 
+// The click you hear and the buzz you feel are separate settings. Turning the
+// clicker off used to take the haptics with it, and there was no way to turn
+// the haptics off alone.
+test("haptics turn off apart from the click, and the other way round", () => {
+  const ClickWheel = loadWheel();
+  const asked = [];
+  global.window.peerskyHaptic = (weight) => { asked.push(weight); return true; };
+  global.performance = { now: () => 1000 };
+
+  const silent = {
+    clicker: false, haptics: true, _touched: true, _lastClick: 0, _haptic: ClickWheel.prototype._haptic,
+    _unlockAudio() { throw new Error("no sound with the clicker off"); },
+  };
+  ClickWheel.prototype.tick.call(silent);
+  assert.deepEqual(asked, ["light"]);
+
+  let sounded = 0;
+  const still = {
+    clicker: true, haptics: false, _touched: true, _lastClick: 0, _haptic: () => asked.push("buzz"),
+    _unlockAudio() { sounded++; }, _ctx: null,
+  };
+  ClickWheel.prototype.tick.call(still);
+  assert.deepEqual(asked, ["light"]);
+  assert.equal(sounded, 1);
+});
+
+test("the Haptics setting only shows where something can buzz", () => {
+  const ClickWheel = loadWheel();
+  global.window.peerskyHaptic = () => true;
+  assert.equal(ClickWheel.canHaptic(), true);
+
+  delete global.window.peerskyHaptic;
+  Object.defineProperty(globalThis, "navigator", { configurable: true, value: { vibrate: () => true } });
+  global.window.matchMedia = () => ({ matches: false });
+  assert.equal(ClickWheel.canHaptic(), false, "a computer has nothing to feel");
+  global.window.matchMedia = () => ({ matches: true });
+  assert.equal(ClickWheel.canHaptic(), true);
+
+  const fs = require("node:fs");
+  const ui = fs.readFileSync(require.resolve("../js/ui.js"), "utf8");
+  const main = fs.readFileSync(require.resolve("../js/main.js"), "utf8");
+  assert.match(ui, /\.\.\.\(PT\.ClickWheel\.canHaptic\(\) \? \[\{\s+label: "Haptics"/);
+  assert.match(ui, /s\.haptics = !s\.haptics; ui\.wheel\.haptics = s\.haptics; commit\(\);/);
+  assert.match(main, /\{ clicker: true, haptics: true,/);
+  assert.match(main, /wheel\.haptics = settings\.haptics;/);
+});
+
 test("outside PeerSky the wheel still uses what the web gives it", () => {
   const ClickWheel = loadWheel();
   const vibrated = [];
@@ -171,6 +220,10 @@ test("an import says how many were new and how many were already here", () => {
 
     await runImport.call(ui, async () => ({ added: 0, found: 0 }));
     assert.equal(messages.at(-1).msg, "No new songs found");
+
+    // A folder that never answered is said out loud, not left to look empty.
+    await runImport.call(ui, async () => ({ added: 3, found: 5, partial: true }));
+    assert.equal(messages.at(-1).sub, "2 of 5 were already in your library. Some folders did not answer yet, so Rescan Sources later");
   })();
 });
 
