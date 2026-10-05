@@ -665,6 +665,7 @@ body {
   transition: filter 90ms ease, transform 90ms ease;
 }
 .wz svg { display: block; width: calc(var(--w) * 7.5); fill: var(--wheel-label); }
+.wz-menu svg { width: calc(var(--w) * 5.4); }
 .wz-menu { top: 6.5%; left: 50%; transform: translateX(-50%); }
 .wz-prev { left: 6.5%; top: 50%; transform: translateY(-50%); }
 .wz-next { right: 6.5%; top: 50%; transform: translateY(-50%); }
@@ -679,7 +680,9 @@ body {
 .wheel-center {
   position: absolute;
   inset: 30.5%;
-  border-radius: 50%;
+  /* A rounded square, not a circle, so the wheel is PeerTunes' own and not a
+     copy of another player's. */
+  border-radius: 34%;
   border: none;
   cursor: pointer;
   background: radial-gradient(circle at 50% 32%, var(--wheel-center-a), var(--wheel-center-b) 80%);
@@ -914,16 +917,7 @@ body.dropping .drop-hint { display: grid; }
   background: linear-gradient(180deg, var(--wheel-a), var(--wheel-b));
   box-shadow: inset 0 0 0 1px var(--shell-edge);
 }
-.wl-menu {
-  position: absolute;
-  top: 9px;
-  left: 0;
-  right: 0;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  color: var(--wheel-label);
-}
+.wl-menu-icon { top: 8px; left: 50%; margin-left: -8px; }
 .wl-glyph { position: absolute; display: flex; width: 16px; height: 12px; color: var(--wheel-label); }
 .wl-glyph svg { width: 100%; height: 100%; fill: currentColor; }
 .wl-prev { left: 8px; top: 50%; margin-top: -6px; }
@@ -948,7 +942,7 @@ body.dropping .drop-hint { display: grid; }
   width: 40px;
   height: 40px;
   margin: -20px 0 0 -20px;
-  border-radius: 50%;
+  border-radius: 34%;
   background: linear-gradient(180deg, var(--wheel-center-a), var(--wheel-center-b));
   box-shadow: inset 0 0 0 1px var(--shell-edge);
   animation: wl-press 3.2s ease-in-out infinite;

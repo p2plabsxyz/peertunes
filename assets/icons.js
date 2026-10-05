@@ -12,6 +12,7 @@
     prev: `<svg viewBox="0 0 20 12"><path d="M10 0 2 6l8 6zM19 0l-8 6 8 6z"/><rect x="0" y="0" width="2" height="12"/></svg>`,
     next: `<svg viewBox="0 0 20 12"><path d="M10 0l8 6-8 6zM1 0l8 6-8 6z"/><rect x="18" y="0" width="2" height="12"/></svg>`,
     playpause: `<svg viewBox="0 0 22 12"><path d="M0 0l9.5 6L0 12z"/><rect x="12.5" y="0" width="3.4" height="12"/><rect x="18" y="0" width="3.4" height="12"/></svg>`,
+    menu: `<svg viewBox="0 0 14 12"><rect x="0" y="0.6" width="14" height="2.2" rx="1.1"/><rect x="0" y="4.9" width="14" height="2.2" rx="1.1"/><rect x="0" y="9.2" width="14" height="2.2" rx="1.1"/></svg>`,
 
     note: `<svg viewBox="0 0 24 24"><path d="M9 3v10.55A4 4 0 1 0 11 17V7h8V3H9z"/></svg>`,
     shuffle: `<svg viewBox="0 0 24 24"><path d="M17 4l4 4-4 4V9h-2.6l-8 8H2v-2h3.6l8-8H17V4zM2 7h4.4l1.8 1.8-1.4 1.4L5.2 9H2V7zm12.8 6.8l1.4-1.4 1.8 1.8H17v-3l4 4-4 4v-3h-3.6l-1.6-1.6 1.4-1.4.6.6z"/></svg>`,

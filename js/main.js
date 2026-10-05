@@ -48,6 +48,7 @@
   $("sb-play").innerHTML = PT.icons.play;
   $("sb-pause").innerHTML = PT.icons.pause;
   $("sb-bt").innerHTML = PT.icons.bt;
+  document.querySelector(".wz-menu").innerHTML = PT.icons.menu;
   document.querySelector(".wz-prev").innerHTML = PT.icons.prev;
   document.querySelector(".wz-next").innerHTML = PT.icons.next;
   document.querySelector(".wz-play").innerHTML = PT.icons.playpause;

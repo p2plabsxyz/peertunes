@@ -21,7 +21,7 @@
     {
       art: `<div class="wl-art wl-wheel" aria-hidden="true">
         <span class="wl-ring">
-          <span class="wl-menu">MENU</span>
+          <span class="wl-glyph wl-menu-icon" data-icon="menu"></span>
           <span class="wl-glyph wl-prev" data-icon="prev"></span>
           <span class="wl-glyph wl-next-icon" data-icon="next"></span>
           <span class="wl-glyph wl-play" data-icon="playpause"></span>
@@ -33,7 +33,7 @@
       body: `<ul class="wl-moves">
         <li><b>Circle</b> the wheel to scroll</li>
         <li><b>Press the center</b> to pick</li>
-        <li><b>MENU</b> goes back</li>
+        <li><b>The top</b> goes back</li>
         <li>The bottom plays and pauses, the sides skip</li>
         <li><b>Hold the center</b> on a song to add it to a playlist</li>
       </ul>`,

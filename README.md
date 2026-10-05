@@ -33,11 +33,11 @@ The first visit opens with two short cards: what PeerTunes is, and how the wheel
 
 Open `index.html`. It also works straight from `file://`, no server needed. On desktop the player scales with your window. On a phone it fills the whole screen.
 
-The wheel works like the real one:
+How the wheel works:
 
 - Drag your finger (or mouse) in circles on the wheel to scroll, every step clicks
 - Tap the center button to select
-- MENU goes back, the bottom button is play and pause, left and right are previous and next
+- The top of the wheel goes back, the bottom is play and pause, left and right are previous and next
 - On the Now Playing screen, scrolling changes the volume. Press center to switch to scrubbing, scroll to seek, press center again to leave
 - Or just touch and hold the progress bar and slide: the song jumps when you let go
 - In Albums you can also swipe sideways or tap a side cover
