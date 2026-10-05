@@ -1187,6 +1187,7 @@
       if (!url) return;
       const res = await window.peerskyKeepOffline(url).catch(() => null);
       if (res && res.ok) {
+        this.lib.markSourceKept(url).catch(() => {});
         this.dialog({
           msg: res.status === "waiting-for-wifi" ? "Waiting for Wi-Fi" : "Downloading",
           sub: res.status === "waiting-for-wifi"

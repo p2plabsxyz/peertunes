@@ -289,6 +289,9 @@
       console.error("library failed to open", err);
     }
     ui.replaceAll(ui.rootScreen());
+    // Folders removed from the device while PeerTunes was closed take their
+    // songs with them. Not awaited: the host may take a moment to answer.
+    PT.syncKeptFolders();
 
     setTimeout(() => {
       splash.classList.add("bye");
@@ -306,6 +309,13 @@
       ui.restoreRoutes(savedRoutes);
     }
   }
+  // The host calls this after folders are removed on the device, so their
+  // songs leave a library that is already open.
+  PT.syncKeptFolders = () => library.syncKeptSources().catch((err) => {
+    console.warn("could not check kept folders", err);
+    return 0;
+  });
+
   boot();
 
   // console + testing hooks, also handy for other p2p apps to script
