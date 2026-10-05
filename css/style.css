@@ -597,7 +597,9 @@ body {
   color: var(--ink-dim);
   text-align: center;
   line-height: 1.4;
-  word-break: break-all;
+  /* A share link has to wrap to fit, but break-all also split plain words in
+     two on a phone ("ri ght now"). This only breaks what does not fit. */
+  overflow-wrap: anywhere;
   white-space: pre-line;
   /* links shown here must be selectable, the shell disables selection */
   user-select: text;
