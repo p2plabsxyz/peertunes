@@ -1,4 +1,4 @@
-// Click wheel input. Circular drags scroll, taps hit the five buttons,
+// Wheel input. Circular drags scroll, taps hit the five buttons,
 // every real move makes the little wheel click.
 
 (function (PT) {
@@ -6,7 +6,7 @@
 
   const STEP_DEG = 13;
 
-  class ClickWheel extends EventTarget {
+  class Wheel extends EventTarget {
     constructor(el, centerEl) {
       super();
       this.el = el;
@@ -205,5 +205,5 @@
     }
   }
 
-  PT.ClickWheel = ClickWheel;
+  PT.Wheel = Wheel;
 })(typeof window !== "undefined" ? (window.PT = window.PT || {}) : module.exports);

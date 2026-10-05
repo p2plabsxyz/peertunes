@@ -460,7 +460,9 @@
         // download while listings were still being read slowed them down, and
         // nested folders came back empty.
         if (res.ids.length && /^hyper:\/\//i.test(url) && typeof window.peerskyKeepOffline === "function") {
-          Promise.resolve(window.peerskyKeepOffline(url)).catch(() => {});
+          Promise.resolve(window.peerskyKeepOffline(url))
+            .then((kept) => (kept && kept.ok ? this.markSourceKept(url) : null))
+            .catch(() => {});
         }
         // How many songs this source holds, and how many of them were new. The
         // two are different the moment an import is run twice, or resumed after
@@ -716,6 +718,66 @@
         } catch {}
       }
       return { added, found, partial };
+    }
+
+    // ---- folders the host keeps on the device ----
+
+    // On the phone every imported hyper:// folder is kept on the device. One
+    // that was kept and no longer is was removed there, in Settings, P2P Data,
+    // so its songs go too and the library only lists what is still here. A
+    // folder is marked once the host reports it kept, so one that never was is
+    // left alone. A host that cannot keep folders has no peerskyKeptFolders.
+    async syncKeptSources() {
+      if (typeof window === "undefined" || typeof window.peerskyKeptFolders !== "function") return 0;
+      const hyper = this.sources.filter((s) => /^hyper:\/\//i.test(s.url || ""));
+      if (!hyper.length) return 0;
+      const res = await Promise.resolve(window.peerskyKeptFolders(hyper.map((s) => s.url))).catch(() => null);
+      if (!res || !res.ok || !Array.isArray(res.kept)) return 0;
+      const kept = new Set(res.kept);
+      let removed = 0;
+      for (const source of hyper) {
+        if (kept.has(source.url)) {
+          if (!source.kept) await this._markKept(source);
+        } else if (source.kept) {
+          removed += await this.forgetSource(source.url);
+        }
+      }
+      return removed;
+    }
+
+    // PeerSky said it keeps this folder on the device. From now on, removing
+    // it there takes its songs out of PeerTunes too.
+    async markSourceKept(url) {
+      const source = this.sources.find((s) => s.url === url);
+      if (source && !source.kept) await this._markKept(source);
+    }
+
+    async _markKept(source) {
+      source.kept = true;
+      await idb(this.db, "sources", "readwrite", (s) => s.put(source));
+    }
+
+    // A source, every song read from it, and the playlist it made once that
+    // is empty. Songs added from files stay: they live in the library itself.
+    async forgetSource(url) {
+      const folder = url.endsWith("/") ? url : url + "/";
+      let removed = 0;
+      for (const track of Array.from(this.tracks.values())) {
+        if (track.kind !== "url" || typeof track.url !== "string") continue;
+        if (track.url !== url && !track.url.startsWith(folder)) continue;
+        if (await this.deleteTrack(track.id)) removed++;
+      }
+      for (const pl of Array.from(this.playlists.values())) {
+        if (pl.sourceUrl === url && !pl.trackIds.length) await this.deletePlaylist(pl.id);
+      }
+      await this._dropSource(url);
+      return removed;
+    }
+
+    async _dropSource(url) {
+      await idb(this.db, "sources", "readwrite", (s) => s.delete(url));
+      this.sources = this.sources.filter((s) => s.url !== url);
+      this._invalidate();
     }
 
     async clear() {
