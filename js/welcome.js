@@ -29,7 +29,7 @@
         </span>
         <span class="wl-center"></span>
       </div>`,
-      title: "The click wheel",
+      title: "The wheel",
       body: `<ul class="wl-moves">
         <li><b>Circle</b> the wheel to scroll</li>
         <li><b>Press the center</b> to pick</li>

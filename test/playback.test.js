@@ -109,11 +109,11 @@ function loadWheel() {
   global.window = {};
   delete require.cache[require.resolve("../js/wheel.js")];
   require("../js/wheel.js");
-  return global.window.PT.ClickWheel;
+  return global.window.PT.Wheel;
 }
 
 test("the wheel asks native for a haptic before falling back to the web", () => {
-  const ClickWheel = loadWheel();
+  const Wheel = loadWheel();
   const asked = [];
   global.window.peerskyHaptic = (weight) => { asked.push(weight); return true; };
   const vibrated = [];
@@ -122,7 +122,7 @@ test("the wheel asks native for a haptic before falling back to the web", () => 
     value: { vibrate: (ms) => vibrated.push(ms) },
   });
 
-  ClickWheel.prototype._haptic.call({}, "medium");
+  Wheel.prototype._haptic.call({}, "medium");
 
   // WKWebView has no navigator.vibrate at all, so on iPhone this was the only
   // way for the wheel to be felt.
@@ -134,16 +134,16 @@ test("the wheel asks native for a haptic before falling back to the web", () => 
 // clicker off used to take the haptics with it, and there was no way to turn
 // the haptics off alone.
 test("haptics turn off apart from the click, and the other way round", () => {
-  const ClickWheel = loadWheel();
+  const Wheel = loadWheel();
   const asked = [];
   global.window.peerskyHaptic = (weight) => { asked.push(weight); return true; };
   global.performance = { now: () => 1000 };
 
   const silent = {
-    clicker: false, haptics: true, _touched: true, _lastClick: 0, _haptic: ClickWheel.prototype._haptic,
+    clicker: false, haptics: true, _touched: true, _lastClick: 0, _haptic: Wheel.prototype._haptic,
     _unlockAudio() { throw new Error("no sound with the clicker off"); },
   };
-  ClickWheel.prototype.tick.call(silent);
+  Wheel.prototype.tick.call(silent);
   assert.deepEqual(asked, ["light"]);
 
   let sounded = 0;
@@ -151,42 +151,42 @@ test("haptics turn off apart from the click, and the other way round", () => {
     clicker: true, haptics: false, _touched: true, _lastClick: 0, _haptic: () => asked.push("buzz"),
     _unlockAudio() { sounded++; }, _ctx: null,
   };
-  ClickWheel.prototype.tick.call(still);
+  Wheel.prototype.tick.call(still);
   assert.deepEqual(asked, ["light"]);
   assert.equal(sounded, 1);
 });
 
 test("the Haptics setting only shows where something can buzz", () => {
-  const ClickWheel = loadWheel();
+  const Wheel = loadWheel();
   global.window.peerskyHaptic = () => true;
-  assert.equal(ClickWheel.canHaptic(), true);
+  assert.equal(Wheel.canHaptic(), true);
 
   delete global.window.peerskyHaptic;
   Object.defineProperty(globalThis, "navigator", { configurable: true, value: { vibrate: () => true } });
   global.window.matchMedia = () => ({ matches: false });
-  assert.equal(ClickWheel.canHaptic(), false, "a computer has nothing to feel");
+  assert.equal(Wheel.canHaptic(), false, "a computer has nothing to feel");
   global.window.matchMedia = () => ({ matches: true });
-  assert.equal(ClickWheel.canHaptic(), true);
+  assert.equal(Wheel.canHaptic(), true);
 
   const fs = require("node:fs");
   const ui = fs.readFileSync(require.resolve("../js/ui.js"), "utf8");
   const main = fs.readFileSync(require.resolve("../js/main.js"), "utf8");
-  assert.match(ui, /\.\.\.\(PT\.ClickWheel\.canHaptic\(\) \? \[\{\s+label: "Haptics"/);
+  assert.match(ui, /\.\.\.\(PT\.Wheel\.canHaptic\(\) \? \[\{\s+label: "Haptics"/);
   assert.match(ui, /s\.haptics = !s\.haptics; ui\.wheel\.haptics = s\.haptics; commit\(\);/);
   assert.match(main, /\{ clicker: true, haptics: true,/);
   assert.match(main, /wheel\.haptics = settings\.haptics;/);
 });
 
 test("outside PeerSky the wheel still uses what the web gives it", () => {
-  const ClickWheel = loadWheel();
+  const Wheel = loadWheel();
   const vibrated = [];
   Object.defineProperty(globalThis, "navigator", {
     configurable: true,
     value: { vibrate: (ms) => vibrated.push(ms) },
   });
 
-  ClickWheel.prototype._haptic.call({}, "light");
-  ClickWheel.prototype._haptic.call({}, "medium");
+  Wheel.prototype._haptic.call({}, "light");
+  Wheel.prototype._haptic.call({}, "medium");
 
   assert.deepEqual(vibrated, [4, 8]);
 });

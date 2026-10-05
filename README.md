@@ -4,7 +4,7 @@
 
 <h1 align="center">PeerTunes</h1>
 
-<p align="center">A p2p music player for your own music, with a click wheel. One static page, no build, no server, no tracking.<br>Made for <a href="https://github.com/p2plabsxyz/peersky-browser">PeerSky Browser</a> and built into <a href="https://github.com/p2plabsxyz/peersky-mobile">PeerSky Mobile</a> on iOS and Android (<a href="https://github.com/p2plabsxyz/peersky-mobile/blob/main/docs/peertunes.md">how it runs on the phone</a>). Works in any modern browser too.</p>
+<p align="center">A p2p music player for your own music, with a scroll wheel. One static page, no build, no server, no tracking.<br>Made for <a href="https://github.com/p2plabsxyz/peersky-browser">PeerSky Browser</a> and built into <a href="https://github.com/p2plabsxyz/peersky-mobile">PeerSky Mobile</a> on iOS and Android (<a href="https://github.com/p2plabsxyz/peersky-mobile/blob/main/docs/peertunes.md">how it runs on the phone</a>). Works in any modern browser too.</p>
 
 ## What it does
 
@@ -12,7 +12,7 @@
 - Upload a folder (or drag and drop it on the page) and it syncs into the library
 - Reads tags right from the files: MP3 (ID3v2.2/2.3/2.4 and ID3v1), FLAC, M4A, OGG/Opus, WAV. Any normally tagged song works, embedded covers included
 - Shows a default cover when a song has none, and names an album after its folder when the file carries no album tag
-- Albums open in Cover Flow. Spin the wheel and the covers flip in 3D, like the good old days
+- Albums open as a row of covers. Spin the wheel and the covers flip in 3D, like the good old days
 - Artists, Songs and Genres as classic lists, sorted the way classic players did
 - Custom playlists, with the On-The-Go gesture: hold the center button on a song to file it away
 - Scan a QR code to load a drive or a share link, instead of typing a long `hyper://` key
@@ -22,14 +22,14 @@
 - The library lives in IndexedDB, so your songs stay on the device between visits
 - A refresh brings back the exact page you were on
 - Media Session support: lock your phone and the song keeps playing, with cover art and controls on the lock screen
-- Click wheel with the classic clicker sound and a small vibration on phones
+- A wheel with a clicker sound and a small vibration on phones
 - Status bar shows whether a song is playing or paused, and a bluetooth mark when the sound is going somewhere other than the phone, car stereos included
 
 Want to download your cloud songs playlist and own it locally? Use [zipify-tunes](https://github.com/akhileshthite/zipify-tunes). It turns a playlist into MP3s with ID3 tags and square cover art embedded, so everything shows up in PeerTunes with proper titles, albums and covers.
 
 ## How to use
 
-The first visit opens with two short cards: what PeerTunes is, and how the click wheel works. They are under `About -> How to Use` any time after that.
+The first visit opens with two short cards: what PeerTunes is, and how the wheel works. They are under `About -> How to Use` any time after that.
 
 Open `index.html`. It also works straight from `file://`, no server needed. On desktop the player scales with your window. On a phone it fills the whole screen.
 
@@ -40,7 +40,7 @@ The wheel works like the real one:
 - MENU goes back, the bottom button is play and pause, left and right are previous and next
 - On the Now Playing screen, scrolling changes the volume. Press center to switch to scrubbing, scroll to seek, press center again to leave
 - Or just touch and hold the progress bar and slide: the song jumps when you let go
-- In Cover Flow you can also swipe sideways or tap a side cover
+- In Albums you can also swipe sideways or tap a side cover
 - Keyboard also works: arrows, Enter, Escape, Space
 
 To add music, go to `Add Music`:
@@ -87,8 +87,8 @@ No dependencies, no bundler:
 - `js/metadata.js` tag parsers over a chunked reader (small ranged reads for remote files)
 - `js/library.js` IndexedDB library, folder scan, url crawl
 - `js/player.js` queue, shuffle, repeat, Media Session
-- `js/wheel.js` click wheel input and the clicker sound (WebAudio, synthesized)
-- `js/ui.js` screens, lists, Cover Flow, now playing
+- `js/wheel.js` wheel input and the clicker sound (WebAudio, synthesized)
+- `js/ui.js` screens, lists, album covers, now playing
 - `js/main.js` boot and wiring
 - `js/welcome.js` the two welcome cards shown on a first visit
 - `assets/` icons (`icons.js`, kept as strings so glyphs can follow the shell theme), default cover, grain texture. The favicon comes from `peersky://static/assets/peertunes.ico` inside PeerSky

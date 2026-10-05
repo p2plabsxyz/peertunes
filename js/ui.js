@@ -177,7 +177,7 @@
         const screen = this._screenFromRoute(entry.r);
         if (!screen) break;
         if (typeof entry.pos === "number") {
-          if (screen.name === "coverflow") screen.idx = entry.pos;
+          if (screen.name === "covers") screen.idx = entry.pos;
           else screen.sel = entry.pos;
         }
         this.stack.push(screen);
@@ -190,7 +190,7 @@
       const key = r[0], arg = r[1];
       switch (key) {
         case "music": return this.lib.count ? this.musicScreen() : null;
-        case "cover": return this.lib.getAlbums().length ? this.coverFlowScreen() : null;
+        case "cover": return this.lib.getAlbums().length ? this.coverScreen() : null;
         case "album": return this.lib.album(arg) ? this.albumScreen(arg) : null;
         case "artists": return this.lib.count ? this.artistsScreen() : null;
         case "artist": return this.lib.artist(arg) ? this.artistScreen(arg) : null;
@@ -477,7 +477,7 @@
         refreshOnLibrary: true,
         rows: () => (ui.lib.count === 0 ? [] : [
           { label: "Playlists", chevron: true, action: () => ui.push(ui.playlistsScreen()) },
-          { label: "Albums", chevron: true, action: () => ui.push(ui.coverFlowScreen()) },
+          { label: "Albums", chevron: true, action: () => ui.push(ui.coverScreen()) },
           { label: "Artists", chevron: true, action: () => ui.push(ui.artistsScreen()) },
           { label: "Songs", chevron: true, action: () => ui.push(ui.songsScreen()) },
           { label: "Genres", chevron: true, action: () => ui.push(ui.genresScreen()) },
@@ -486,13 +486,13 @@
       });
     }
 
-    // ---------- cover flow ----------
+    // ---------- album covers ----------
 
-    coverFlowScreen() {
+    coverScreen() {
       const ui = this;
       return {
-        name: "coverflow",
-        title: "Cover Flow",
+        name: "covers",
+        title: "Albums",
         route: ["cover"],
         refreshOnLibrary: true,
         idx: 0,
@@ -1546,7 +1546,7 @@
             action: () => { s.clicker = !s.clicker; ui.wheel.clicker = s.clicker; commit(); },
           },
           // The buzz on each turn of the wheel, apart from its sound.
-          ...(PT.ClickWheel.canHaptic() ? [{
+          ...(PT.Wheel.canHaptic() ? [{
             label: "Haptics", value: s.haptics ? "On" : "Off",
             action: () => { s.haptics = !s.haptics; ui.wheel.haptics = s.haptics; commit(); },
           }] : []),

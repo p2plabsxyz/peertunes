@@ -26,7 +26,7 @@
 
   const library = new PT.Library();
   const player = new PT.Player($("audio"), library);
-  const wheel = new PT.ClickWheel($("wheel"), $("wheel-center"));
+  const wheel = new PT.Wheel($("wheel"), $("wheel-center"));
 
   player.shuffle = settings.shuffle;
   player.repeat = settings.repeat;
