@@ -124,6 +124,44 @@
   player.addEventListener("state", updateBluetooth);
   updateBluetooth();
 
+  // ---------- the song you were on ----------
+
+  // Kept apart: the queue changes now and then and can be long, the place in
+  // the song changes every few seconds.
+  const QUEUE_KEY = "peertunes-queue";
+  const PLACE_KEY = "peertunes-place";
+  const PLACE_EVERY_MS = 5000;
+  const readSaved = (key) => {
+    try { return JSON.parse(localStorage.getItem(key) || "null"); } catch { return null; }
+  };
+  // Nothing loaded yet, at start, is not a reason to forget the last song.
+  const writeSaved = (key, value) => {
+    if (!value) return;
+    try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
+  };
+  let placeSavedAt = 0;
+  const savePlace = () => {
+    placeSavedAt = performance.now();
+    writeSaved(PLACE_KEY, player.savedPlace());
+  };
+  player.addEventListener("queuechange", () => writeSaved(QUEUE_KEY, player.savedQueue()));
+  player.addEventListener("trackchange", savePlace);
+  player.addEventListener("state", savePlace);
+  player.addEventListener("time", () => {
+    if (performance.now() - placeSavedAt > PLACE_EVERY_MS) savePlace();
+  });
+  document.addEventListener("visibilitychange", () => { if (document.hidden) savePlace(); });
+  window.addEventListener("pagehide", savePlace);
+
+  // Paused on the same song, at the same place, ready to play on.
+  function restorePlayer() {
+    try {
+      player.restore(readSaved(QUEUE_KEY), readSaved(PLACE_KEY), (id) => library.tracks.get(id));
+    } catch (err) {
+      console.warn("could not put the last song back", err);
+    }
+  }
+
   // ---------- backlight dim ----------
 
   let dimTimer = null;
@@ -275,6 +313,10 @@
 
   // ---------- boot ----------
 
+  // A host asking for a screen waits until the saved page is back.
+  let bootDone = null;
+  const booted = new Promise((resolve) => { bootDone = resolve; });
+
   async function boot() {
     const splash = document.createElement("div");
     splash.className = "splash";
@@ -289,6 +331,8 @@
     } catch (err) {
       console.error("library failed to open", err);
     }
+    // before the menu is drawn, so it offers Now Playing
+    restorePlayer();
     ui.replaceAll(ui.rootScreen());
     // Folders removed from the device while PeerTunes was closed take their
     // songs with them. Not awaited: the host may take a moment to answer.
@@ -317,7 +361,7 @@
     return 0;
   });
 
-  boot();
+  boot().catch((err) => console.error("boot failed", err)).finally(() => bootDone());
 
   // console + testing hooks, also handy for other p2p apps to script
   window.PeerTunes = {
@@ -326,5 +370,8 @@
     addUrl: (url) => ui.runImport(() => library.addUrl(url)),
     importShared: (url) => library.importShared(url),
     loadRemote: (url) => library.loadRemote(url),
+    // Now Playing with this song ready, by its id. PeerSky's home screen
+    // widget asks for the song it shows.
+    openNowPlaying: (songId) => booted.then(() => ui.showSong(typeof songId === "string" ? songId : "")),
   };
 })();

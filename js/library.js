@@ -150,6 +150,46 @@
     return SCANNABLE_SCHEME.test(raw) ? raw : "";
   }
 
+  // ---- songs kept on the device (pure, covered by tests) ----
+
+  // Only a song in a hyper:// drive can be kept by the host. One added from
+  // this device's own files is here already.
+  const keepableSong = (t) => !!t && t.kind === "url" && /^hyper:\/\//i.test(t.url || "");
+
+  // How far a kept list has got, from what the host says about each song:
+  // saved (all of it is on the device), saving (part of it is here and more
+  // is coming) or waiting (nobody who has it is online). A song it said
+  // nothing about is still to come. `known` holds songs already found saved,
+  // which are not asked about again.
+  function keepState(tracks, answer, known) {
+    const saved = new Set(known || []);
+    for (const url of (answer && answer.saved) || []) saved.add(url);
+    const saving = new Set((answer && answer.saving) || []);
+    const waiting = new Set((answer && answer.waiting) || []);
+    const here = new Set();
+    const missing = new Set();
+    let current = null, next = null, stuck = 0, cannot = 0;
+    for (const t of tracks) {
+      if (t.kind === "file" || (keepableSong(t) && saved.has(t.url))) { here.add(t.id); continue; }
+      missing.add(t.id);
+      if (!keepableSong(t)) cannot++;
+      else if (waiting.has(t.url)) stuck++;
+      else if (saving.has(t.url)) { if (!current) current = t; }
+      else if (!next) next = t;
+    }
+    return {
+      total: tracks.length,
+      saved: here.size,
+      here, // ids of the songs on the device
+      missing, // ids of the songs that are not, yet
+      current: current || next, // the song coming in now, or the next one
+      stuck, // missing songs that nobody who has them is online for
+      cannot, // songs from the web rather than a drive, which cannot be kept
+      complete: missing.size === 0,
+      savedUrls: saved,
+    };
+  }
+
   function slug(s) {
     const out = (s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
     return out || "playlist";
@@ -757,6 +797,27 @@
       await idb(this.db, "sources", "readwrite", (s) => s.put(source));
     }
 
+    isSourceKept(url) {
+      return this.sources.some((s) => s.url === url && s.kept === true);
+    }
+
+    // Where each song of a list stands with a host that keeps songs on the
+    // device. Asking also has the host fetch whatever is missing, so a song it
+    // could not get before is tried again each time. Null where the host
+    // cannot keep songs one by one.
+    async keepSongs(tracks, before = null) {
+      if (typeof window === "undefined" || typeof window.peerskyKeepSongs !== "function") return null;
+      const known = before && before.savedUrls ? before.savedUrls : null;
+      const ask = new Set();
+      for (const t of tracks) {
+        if (keepableSong(t) && !(known && known.has(t.url))) ask.add(t.url);
+      }
+      let answer = { ok: true, saved: [], saving: [], waiting: [] };
+      if (ask.size) answer = await Promise.resolve(window.peerskyKeepSongs(Array.from(ask))).catch(() => null);
+      if (!answer || !answer.ok) return null;
+      return keepState(tracks, answer, known);
+    }
+
     // A source, every song read from it, and the playlist it made once that
     // is empty. Songs added from files stay: they live in the library itself.
     async forgetSource(url) {
@@ -990,6 +1051,15 @@
     artist(key) { return this._group().artists.get(key) || null; }
     genre(key) { return this._group().genres.get(key) || null; }
 
+    // The album a song is filed under, as Albums lists it.
+    albumOf(track) {
+      if (!track) return null;
+      for (const album of this._group().albums.values()) {
+        if (album.tracks.includes(track)) return album;
+      }
+      return null;
+    }
+
     get count() { return this.tracks.size; }
   }
 
@@ -998,6 +1068,7 @@
   PT.buildManifest = buildManifest;
   PT.parseManifest = parseManifest;
   PT.resolveManifestFiles = resolveManifestFiles;
+  PT.keepState = keepState;
   PT.parseListingHtml = parseListingHtml;
   PT.readScannedUrl = readScannedUrl;
   PT.P2P_SCHEMES = P2P_SCHEMES;

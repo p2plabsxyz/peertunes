@@ -296,6 +296,10 @@ body {
 }
 .row .tnum { color: var(--ink-dim); font-weight: 600; min-width: calc(var(--w) * 3.4); text-align: right; }
 .row.dim { color: var(--ink-dim); }
+/* a small mark at the end of a row: Shuffle, or whether a kept song is here */
+.row .glyph { display: inline-flex; flex: 0 0 auto; width: calc(var(--u) * 6); }
+.row .glyph svg { width: 100%; fill: #3b7fd6; }
+.row .glyph.off svg { fill: #8d929a; }
 
 .row.sel {
   background: linear-gradient(180deg, var(--sel-a), var(--sel-b) 88%);
@@ -304,6 +308,8 @@ body {
 }
 .row.sel .sub, .row.sel .value, .row.sel .tnum { color: #e2eefc; }
 .row.sel .chev { color: #fff; }
+.row.sel .glyph svg { fill: #fff; }
+.row.sel .glyph.off svg { fill: #c4d9f6; }
 
 /* scroll rail */
 .rail {
@@ -440,6 +446,22 @@ body {
 .np-idx { margin-top: auto; font-size: calc(var(--u) * 4.7); color: var(--ink-dim); font-weight: 600; padding-bottom: calc(var(--u) * 1); }
 .np-badges { display: inline-flex; gap: calc(var(--w) * 1.6); margin-left: calc(var(--w) * 1.6); }
 .np-badges svg { width: calc(var(--u) * 5.4); fill: #3b7fd6; vertical-align: middle; }
+/* Shuffle is always shown, grey while off. Tap it to switch. The padding
+   gives a finger more to hit than the mark itself. */
+.np-shuffle {
+  display: inline-flex;
+  vertical-align: middle;
+  margin: calc(var(--u) * -1.6) 0 calc(var(--u) * -1.6) calc(var(--w) * 0.6);
+  padding: calc(var(--u) * 1.6);
+  border: 0;
+  border-radius: calc(var(--u) * 1.8);
+  background: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.np-shuffle svg { width: calc(var(--u) * 5.4); fill: #a4a9b1; display: block; }
+.np-shuffle.on svg { fill: #3b7fd6; }
+.np-shuffle:active { background: rgba(0, 0, 0, 0.07); }
 
 .np-bottom { margin-top: calc(var(--u) * 2.2); position: relative; }
 .np-progress {
@@ -490,6 +512,30 @@ body {
 }
 .np-vol .vfill { height: 100%; background: linear-gradient(180deg, var(--sel-a), var(--sel-b)); }
 
+/* the Shuffle stop of the center button swaps in the same way */
+.np-shuf {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  gap: calc(var(--w) * 2.4);
+  font-size: calc(var(--u) * 5.2);
+  font-weight: 700;
+  color: #474b53;
+}
+.np.shufmode .np-shuf { display: flex; }
+.np.shufmode .np-progress, .np.shufmode .np-times { visibility: hidden; }
+.np-shuf svg { width: calc(var(--u) * 6); fill: #3b7fd6; flex: 0 0 auto; }
+.np-shuf-lbl { flex: 1; }
+.np-shuf-opts {
+  display: flex;
+  border-radius: calc(var(--u) * 1.8);
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px #a9adb5;
+}
+.np-shuf-opts span { padding: calc(var(--u) * 1) calc(var(--w) * 3); color: var(--ink-dim); cursor: pointer; }
+.np-shuf-opts span.on { background: linear-gradient(180deg, var(--sel-a), var(--sel-b)); color: #fff; }
+
 /* ---------- sync screen ---------- */
 
 .sync { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: calc(var(--u) * 4); }
@@ -500,6 +546,35 @@ body {
 .sync .big { font-size: calc(var(--u) * 7); font-weight: 700; }
 .sync .count { font-size: calc(var(--u) * 5.4); color: var(--ink-dim); font-weight: 600; font-variant-numeric: tabular-nums; }
 .sync .warn { font-size: calc(var(--u) * 4.8); color: #8a4444; font-weight: 700; letter-spacing: 0.04em; }
+
+/* ---------- keeping a playlist on the device ---------- */
+
+.keep { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: calc(var(--u) * 3) calc(var(--w) * 6); }
+.keep .keep-in { display: grid; justify-items: center; gap: calc(var(--u) * 2.2); width: 100%; min-width: 0; }
+.keep .keep-icon { display: inline-flex; width: calc(var(--u) * 15); height: calc(var(--u) * 15); }
+.keep .keep-icon svg { width: 100%; height: 100%; fill: #3b7fd6; }
+.keep .keep-icon.busy svg { animation: spin 1.5s linear infinite; transform-origin: 50% 50%; }
+.keep .keep-icon.stuck svg { fill: #a4a9b1; }
+.keep .big { font-size: calc(var(--u) * 6.8); font-weight: 700; }
+.keep .keep-bar {
+  width: 78%;
+  height: calc(var(--u) * 3.8);
+  border-radius: calc(var(--u) * 2.4);
+  background: linear-gradient(180deg, #c3c7cf, #e6e9ee);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35), inset 0 -1px 1px rgba(255, 255, 255, 0.7);
+  overflow: hidden;
+}
+.keep .keep-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(180deg, var(--sel-a), var(--sel-b));
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.5);
+  transition: width 300ms ease;
+}
+.keep .count { font-size: calc(var(--u) * 5.4); color: var(--ink-dim); font-weight: 600; font-variant-numeric: tabular-nums; }
+.keep .keep-song { max-width: 100%; font-size: calc(var(--u) * 5); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.keep .keep-now { color: var(--ink-dim); font-weight: 600; }
+.keep .keep-note { font-size: calc(var(--u) * 4.6); color: var(--ink-dim); line-height: 1.4; max-width: 92%; }
 
 /* ---------- url entry ---------- */
 
@@ -776,7 +851,8 @@ body.dropping .drop-hint { display: grid; }
   .artpane .float-cover { animation: none; }
   .page.anim-in-right, .page.anim-in-left, .page.anim-out-left, .page.anim-out-right { animation: none; }
   .cf-cover { transition: none; }
-  .sync .arrows { animation-duration: 3s; }
+  .sync .arrows, .keep .keep-icon.busy svg { animation-duration: 3s; }
+  .keep .keep-fill { transition: none; }
 }
 
 /* ---------- welcome ---------- */
