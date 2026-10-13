@@ -20,7 +20,8 @@
 - Delete a song, a whole album, or a playlist when you are done with it
 - Share a playlist as a `peersky://p2p/peertunes` link. It publishes to a hyper:// drive and the other side chooses Import or Play Only, so it never messes up their library
 - The library lives in IndexedDB, so your songs stay on the device between visits
-- A refresh brings back the exact page you were on
+- A refresh brings back the exact page you were on, and the song that was playing, paused where you left it
+- Shuffle: a Shuffle row at the top of every playlist, album and song list, and a shuffle mark on Now Playing that turns it on and off
 - Media Session support: lock your phone and the song keeps playing, with cover art and controls on the lock screen
 - A wheel with a clicker sound and a small vibration on phones
 - Status bar shows whether a song is playing or paused, and a bluetooth mark when the sound is going somewhere other than the phone, car stereos included
@@ -38,7 +39,8 @@ How the wheel works:
 - Drag your finger (or mouse) in circles on the wheel to scroll, every step clicks
 - Tap the center button to select
 - The top of the wheel goes back, the bottom is play and pause, left and right are previous and next
-- On the Now Playing screen, scrolling changes the volume. Press center to switch to scrubbing, scroll to seek, press center again to leave
+- On the Now Playing screen, scrolling changes the volume. Press center to switch to scrubbing and scroll to seek, press center again for the Shuffle Off and On bar (scroll forward for on, back for off), and once more to go back to the volume. The bar goes back to the volume by itself after a few seconds
+- Tap the shuffle mark beside the song count on Now Playing to turn shuffle on or off. It is blue when on
 - Or just touch and hold the progress bar and slide: the song jumps when you let go
 - In Albums you can also swipe sideways or tap a side cover
 - Keyboard also works: arrows, Enter, Escape, Space
@@ -70,6 +72,8 @@ On the other end, opening the link in PeerSky asks before touching anything:
 - `Import` saves the songs and files them under a playlist with your name for it
 - Opening the same link again just opens the playlist, no double imports
 
+In PeerSky Mobile, `Keep On This Device…` on an imported playlist saves every song on the phone, so it plays with the network off. The screen counts them as they arrive ("12 of 20 on this device", with the song being saved), and says when all of them are in. A song counts only once all of it is on the phone. When the person who shared the playlist goes offline, it says the rest saves once they are back, and it carries on by itself when the playlist is opened again. The playlist row shows how many are on the phone, and each song has a mark: blue when it is on the phone, grey when it is not yet.
+
 Publishing needs PeerSky (that is where the drive writes live). Outside PeerSky you can still share folders you synced from a URL. The app accepts `#playlist=` or `?playlist=` (and old `src=` links) with `hyper://`, `ipfs://`, `ipns://` and http(s) sources.
 
 ## Loading from hyper://
@@ -93,7 +97,7 @@ No dependencies, no bundler:
 - `js/welcome.js` the two welcome cards shown on a first visit
 - `assets/` icons (`icons.js`, kept as strings so glyphs can follow the shell theme), default cover, grain texture. The favicon comes from `peersky://static/assets/peertunes.ico` inside PeerSky
 
-Console API for scripting: `PeerTunes.addUrl("hyper://…")`, `PeerTunes.addFiles([...])`, `PeerTunes.player`, `PeerTunes.library`.
+Console API for scripting: `PeerTunes.addUrl("hyper://…")`, `PeerTunes.addFiles([...])`, `PeerTunes.openNowPlaying(id)` (opens Now Playing on a song in the library, as a tap on PeerSky Mobile's widget does), `PeerTunes.player`, `PeerTunes.library`.
 
 To try it against a plain folder of songs without a p2p node, serve any music folder over http and load its URL from Add Music:
 
