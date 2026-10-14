@@ -5,6 +5,13 @@
 
   const ROW_H = 14.9; // in --u units (1% of screen height)
   const VISIBLE = 6;
+  // How often a kept playlist on screen asks how its songs are doing, and how
+  // long before it asks the host to keep its folder again.
+  const KEEP_CHECK_MS = 3000;
+  const KEEP_ASK_AGAIN_MS = 5 * 60 * 1000;
+  // Shuffle on Now Playing goes back to the volume after this long untouched,
+  // so a later turn of the wheel does not flip it by mistake.
+  const SHUFFLE_MODE_MS = 4000;
   const REPO_URL = "https://github.com/p2plabsxyz/peertunes";
   // A companion tool, for people whose music is sitting in a streaming
   // playlist rather than in a folder.
@@ -76,6 +83,10 @@
       this.saveSettings = opts.saveSettings;
       this.stack = [];
       this._dialog = null;
+      // What the host last said about each kept playlist, by playlist id.
+      this._kept = new Map();
+      this._keepTimer = null;
+      this._keepAsked = new Map();
 
       this.wheel.addEventListener("scroll", (e) => this._onScroll(e.detail.dir));
       this.wheel.addEventListener("press", (e) => this._onPress(e.detail.btn));
@@ -86,15 +97,22 @@
       });
       this.player.addEventListener("trackerror", (e) => {
         if (this._dialog) return;
+        const track = e.detail;
+        const title = (track && track.title) || "";
+        // A song of a kept playlist that has not reached the device yet.
+        const away = !!track && Array.from(this._kept.values()).some((s) => s.missing.has(track.id));
         this.dialog({
           msg: "Cannot play this song",
-          sub: (e.detail && e.detail.title) || "",
+          sub: away ? `${title}\nIt is not on this device yet.` : title,
           buttons: [
             { label: "Skip", action: () => this.player.next() },
             { label: "OK" },
           ],
         });
       });
+      if (typeof document !== "undefined") {
+        document.addEventListener("visibilitychange", () => { if (!document.hidden) this._watchKept(); });
+      }
     }
 
     top() { return this.stack[this.stack.length - 1] || null; }
@@ -194,6 +212,10 @@
         case "album": return this.lib.album(arg) ? this.albumScreen(arg) : null;
         case "artists": return this.lib.count ? this.artistsScreen() : null;
         case "artist": return this.lib.artist(arg) ? this.artistScreen(arg) : null;
+        case "artistsongs": {
+          const a = this.lib.artist(arg);
+          return a ? this.songsScreen(this._artistSongs(a), a.name, ["artistsongs", arg]) : null;
+        }
         case "songs": return this.lib.count ? this.songsScreen() : null;
         case "genres": return this.lib.count ? this.genresScreen() : null;
         case "genre": {
@@ -208,6 +230,8 @@
         case "add": return this.addScreen();
         case "settings": return this.settingsScreen();
         case "about": return this.aboutScreen();
+        // the song put back at start, if there was one
+        case "now": return this.player.current() ? this.nowPlayingScreen() : null;
         default: return null;
       }
     }
@@ -284,11 +308,13 @@
         route: opts.route || null,
         refreshOnLibrary: !!opts.refreshOnLibrary,
         onMenu: opts.onMenu,
+        rows: opts.rows,
         sel: 0,
         first: 0,
         render(page) {
           this.page = page;
           this.data = opts.rows();
+          if (opts.onRender) opts.onRender(this);
           if (!this.data.length) {
             page.appendChild(msgEl(opts.empty || { big: "Nothing Here", small: "" }));
             return;
@@ -356,6 +382,15 @@
           if (r.sub) wrap.appendChild(text("div", "sub", r.sub));
           row.appendChild(wrap);
           if (r.value) row.appendChild(text("span", "value", r.value));
+          if (r.glyph) {
+            // a small mark at the end of the row: Shuffle, or a kept song
+            const mark = h("span", "glyph" + (r.glyphOff ? " off" : ""), r.glyph);
+            if (r.glyphTitle) {
+              mark.title = r.glyphTitle;
+              mark.setAttribute("aria-label", r.glyphTitle);
+            }
+            row.appendChild(mark);
+          }
           if (r.chevron) row.appendChild(h("span", "chev", "›"));
           row.addEventListener("click", () => {
             if (this._dragged) return;
@@ -600,19 +635,19 @@
     albumScreen(key) {
       const ui = this;
       const album = ui.lib.album(key);
-      return this.list({
+      const screen = this.list({
         name: "album",
         title: album ? album.name : "Album",
         route: ["album", key],
         rows: () => {
           const a = ui.lib.album(key);
           if (!a) return [];
-          return a.tracks.map((t, i) => ({
+          return ui._shuffleRow(a.tracks).concat(a.tracks.map((t, i) => ({
             label: t.title,
             tnum: t.track || i + 1,
             action: () => ui.playAndShow(a.tracks, i),
             hold: () => ui.push(ui.songActionsScreen(t)),
-          })).concat([{
+          })), [{
             label: "Delete Album…",
             dim: true,
             action: () => ui.dialog({
@@ -633,6 +668,20 @@
         },
         empty: { big: "Empty Album", small: "" },
       });
+      // land on the first song, Shuffle stays one scroll up
+      if (album) screen.sel = this._shuffleRow(album.tracks).length;
+      return screen;
+    }
+
+    // "Shuffle" at the top of a list of songs: plays the whole list in a
+    // random order. Nothing to shuffle in a list of one.
+    _shuffleRow(tracks) {
+      if (tracks.length < 2) return [];
+      return [{ label: "Shuffle", glyph: PT.icons.shuffle, action: () => this.shufflePlay(tracks) }];
+    }
+
+    _artistSongs(artist) {
+      return artist.tracks.slice().sort((x, y) => PT.sortName(x.title).localeCompare(PT.sortName(y.title)));
     }
 
     artistsScreen() {
@@ -662,9 +711,9 @@
         rows: () => {
           const a = ui.lib.artist(key);
           if (!a) return [];
-          const songs = a.tracks.slice().sort((x, y) => PT.sortName(x.title).localeCompare(PT.sortName(y.title)));
+          const songs = ui._artistSongs(a);
           return [
-            { label: "All Songs", chevron: true, action: () => ui.push(ui.songsScreen(songs, a.name)) },
+            { label: "All Songs", chevron: true, action: () => ui.push(ui.songsScreen(songs, a.name, ["artistsongs", key])) },
           ].concat(ui.lib.albumsOfArtist(key).map((al) => ({
             label: al.name,
             sub: al.year ? String(al.year) : "",
@@ -678,22 +727,25 @@
 
     songsScreen(fixed = null, title = "Songs", route = null) {
       const ui = this;
-      return this.list({
+      const screen = this.list({
         name: "songs",
         title,
         route: route || (fixed ? null : ["songs"]),
         refreshOnLibrary: !fixed,
         rows: () => {
           const songs = fixed || ui.lib.getSongs();
-          return songs.map((t, i) => ({
+          return ui._shuffleRow(songs).concat(songs.map((t, i) => ({
             label: t.title,
             sub: [t.artist, t.album].filter(Boolean).join(" — "),
             action: () => ui.playAndShow(songs, i),
             hold: () => ui.push(ui.songActionsScreen(t)),
-          }));
+          })));
         },
         empty: { big: "No Songs", small: "Add some music first." },
       });
+      // land on the first song, Shuffle stays one scroll up
+      if ((fixed ? fixed.length : ui.lib.count) > 1) screen.sel = 1;
+      return screen;
     }
 
     genresScreen() {
@@ -758,30 +810,32 @@
           if (!p) return [];
           const tracks = ui.lib.playlistTracks(id);
           // actions live above the songs so sharing is easy to find
-          const rows = [
-            { label: "Add Songs…", chevron: true, dim: true, action: () => ui.push(ui.addSongsScreen(id)) },
-            { label: "Share This Playlist…", dim: true, action: () => ui.sharePlaylist(id) },
-          ];
-          // An imported playlist is a list of addresses until the folder behind
-          // it is on the device. Only offered where something can actually do
-          // the downloading, and only for a playlist that came from a drive.
-          if (window.peerskyKeepOffline && /^hyper:\/\//i.test(p.sourceUrl || "")) {
-            rows.push({ label: "Keep On This Device…", dim: true, action: () => ui.keepPlaylistOffline(p) });
-          }
-          rows.push(...tracks.map((t, i) => ({
-            label: t.title,
-            tnum: i + 1,
-            sub: t.artist,
-            action: () => ui.playAndShow(tracks, i),
-            hold: () => ui.dialog({
-              msg: `Remove from ${p.name}?`,
-              sub: t.title,
-              buttons: [
-                { label: "Remove", action: () => ui.lib.removeFromPlaylist(id, t.id) },
-                { label: "Cancel" },
-              ],
-            }),
-          })));
+          const rows = ui._playlistActions(p, tracks);
+          // Kept for the network off: whether each song made it yet.
+          const kept = ui._keepsSongs(p) ? ui._kept.get(id) || null : null;
+          rows.push(...tracks.map((t, i) => {
+            const row = {
+              label: t.title,
+              tnum: i + 1,
+              sub: t.artist,
+              action: () => ui.playAndShow(tracks, i),
+              hold: () => ui.dialog({
+                msg: `Remove from ${p.name}?`,
+                sub: t.title,
+                buttons: [
+                  { label: "Remove", action: () => ui.lib.removeFromPlaylist(id, t.id) },
+                  { label: "Cancel" },
+                ],
+              }),
+            };
+            if (kept) {
+              const here = kept.here.has(t.id);
+              row.glyph = here ? PT.icons.onDevice : PT.icons.offDevice;
+              row.glyphOff = !here;
+              row.glyphTitle = here ? "On this device" : "Not on this device yet";
+            }
+            return row;
+          }));
           rows.push({
             label: "Delete Playlist…", dim: true, action: () => ui.dialog({
               msg: `Delete ${p.name}?`,
@@ -794,10 +848,54 @@
           });
           return rows;
         },
+        onRender: () => { if (screen.keepId) ui._watchKept(); },
       });
-      // land on the first song, the action rows stay one scroll up
-      if (ui.lib.playlistTracks(id).length) screen.sel = 2;
+      // Set while the host keeps this playlist's songs, so they are checked
+      // while it is on screen.
+      Object.defineProperty(screen, "keepId", {
+        get: () => {
+          const p = ui.lib.playlist(id);
+          return p && ui._keepsSongs(p) ? id : null;
+        },
+      });
+      screen.onKeep = (state, before) => {
+        // redrawn in place: the highlighted row and the scroll stay put
+        if (!before || before.saved !== state.saved || before.total !== state.total) screen.refresh();
+        // Said out loud once, so nobody has to count the marks.
+        if (state.complete && before && !before.complete && !ui._dialog) {
+          ui.dialog({ msg: allSavedText(state.total), sub: "They play with the network off.", buttons: [{ label: "OK" }] });
+        }
+      };
+      // land on the first song, the rows above it stay one scroll up
+      const tracks = ui.lib.playlistTracks(id);
+      if (pl && tracks.length) screen.sel = ui._playlistActions(pl, tracks).length;
       return screen;
+    }
+
+    // The rows above a playlist's songs.
+    _playlistActions(p, tracks) {
+      const rows = this._shuffleRow(tracks).concat([
+        { label: "Add Songs…", chevron: true, dim: true, action: () => this.push(this.addSongsScreen(p.id)) },
+        { label: "Share This Playlist…", dim: true, action: () => this.sharePlaylist(p.id) },
+      ]);
+      // An imported playlist is a list of addresses until the folder behind
+      // it is on the device. Only offered where something can actually do
+      // the downloading, and only for a playlist that came from a drive.
+      if (window.peerskyKeepOffline && /^hyper:\/\//i.test(p.sourceUrl || "")) {
+        if (this._keepsSongs(p)) {
+          const state = this._kept.get(p.id);
+          rows.push({
+            label: "On This Device",
+            value: !state ? "" : state.complete ? `All ${state.total}` : `${state.saved} of ${state.total}`,
+            dim: true,
+            chevron: true,
+            action: () => this.push(this.keepScreen(p.id)),
+          });
+        } else {
+          rows.push({ label: "Keep On This Device…", dim: true, action: () => this.keepPlaylistOffline(p) });
+        }
+      }
+      return rows;
     }
 
     addSongsScreen(id) {
@@ -959,8 +1057,28 @@
         this.dialog({ msg: "No Music", sub: "Add some songs first.", buttons: [{ label: "OK" }] });
         return;
       }
-      this.player.playContext(songs, Math.floor(Math.random() * songs.length), { autoShuffle: true });
+      this.shufflePlay(songs);
+    }
+
+    // Plays a list in a random order. Shuffle stays on afterwards, as the
+    // Settings row and the mark on Now Playing both show, until turned off.
+    shufflePlay(tracks) {
+      if (!tracks.length) return;
+      if (!this.settings.shuffle || !this.player.shuffle) {
+        this.settings.shuffle = true;
+        this.player.shuffle = true;
+        this.saveSettings();
+      }
+      this.player.playContext(tracks, Math.floor(Math.random() * tracks.length));
       this.openNowPlaying();
+    }
+
+    // Shuffle on or off, from Settings or Now Playing. The queue playing now
+    // is reordered, or put back in its own order.
+    setShuffle(on) {
+      this.settings.shuffle = on;
+      this.saveSettings();
+      this.player.setShuffle(on);
     }
 
     playAndShow(tracks, index) {
@@ -973,6 +1091,34 @@
       this.push(this.nowPlayingScreen());
     }
 
+    // The host asks for Now Playing with a song: the one its widget shows.
+    // Whatever is playing keeps playing. Otherwise that song is made ready,
+    // paused, from the queue that holds it or else from its album. A song
+    // that is gone leaves the screen as it was, with a note.
+    async showSong(id) {
+      const player = this.player;
+      const current = player.current();
+      if (player.playing || !id || (current && current.id === id)) {
+        if (current) this.openNowPlaying();
+        return !!current;
+      }
+      const at = player.queue.findIndex((t) => t.id === id);
+      if (at >= 0) {
+        await player.cueAt(at);
+      } else {
+        const track = this.lib.tracks.get(id);
+        if (!track) {
+          this.dialog({ msg: "Song not found", sub: "It is no longer in your library.", buttons: [{ label: "OK" }] });
+          return false;
+        }
+        const album = this.lib.albumOf(track);
+        const list = album ? album.tracks : [track];
+        await player.playContext(list, Math.max(0, list.indexOf(track)), { autoplay: false });
+      }
+      this.openNowPlaying();
+      return true;
+    }
+
     // ---------- now playing ----------
 
     nowPlayingScreen() {
@@ -981,6 +1127,7 @@
       return {
         name: "now",
         title: "Now Playing",
+        route: ["now"],
         mode: "normal",
         render(page) {
           const np = h("div", "np");
@@ -991,13 +1138,14 @@
                 <div class="np-title"></div>
                 <div class="np-artist"></div>
                 <div class="np-album"></div>
-                <div class="np-idx"><span class="idxtext"></span><span class="np-badges"></span></div>
+                <div class="np-idx"><span class="idxtext"></span><button type="button" class="np-shuffle">${PT.icons.shuffle}</button><span class="np-badges"></span></div>
               </div>
             </div>
             <div class="np-bottom">
               <div class="np-progress"><div class="np-fill"></div></div>
               <div class="np-times"><span class="t-el">0:00</span><span class="t-rem">-0:00</span></div>
               <div class="np-vol">${PT.icons.speaker}<div class="vbar"><div class="vfill"></div></div></div>
+              <div class="np-shuf">${PT.icons.shuffle}<span class="np-shuf-lbl">Shuffle</span><span class="np-shuf-opts"><span data-on="0">Off</span><span data-on="1">On</span></span></div>
             </div>`;
           page.appendChild(np);
           this.np = np;
@@ -1007,7 +1155,9 @@
             artist: np.querySelector(".np-artist"),
             album: np.querySelector(".np-album"),
             idx: np.querySelector(".idxtext"),
+            shuffle: np.querySelector(".np-shuffle"),
             badges: np.querySelector(".np-badges"),
+            shufOpts: Array.from(np.querySelectorAll(".np-shuf-opts span")),
             fill: np.querySelector(".np-fill"),
             tEl: np.querySelector(".t-el"),
             tRem: np.querySelector(".t-rem"),
@@ -1023,7 +1173,17 @@
             () => ui.player.removeEventListener("trackchange", onTrack),
             () => ui.player.removeEventListener("time", onTime),
             () => ui.player.removeEventListener("state", onState),
+            () => clearTimeout(this._shufTimer),
           ];
+          // A tap on the mark turns Shuffle on or off. So does the wheel, on
+          // the Shuffle stop the center button reaches after scrubbing.
+          this.els.shuffle.addEventListener("click", () => {
+            ui.wheel.tick();
+            ui.setShuffle(!ui.player.shuffle);
+          });
+          // No focus from a tap, or the next Enter for the wheel draws a ring.
+          this.els.shuffle.addEventListener("mousedown", (e) => e.preventDefault());
+          this.els.shufOpts.forEach((el) => el.addEventListener("click", () => this._pickShuffle(el.dataset.on === "1")));
           this._bindScrub(np.querySelector(".np-progress"));
           this.paintTrack();
           this.paintTime();
@@ -1077,14 +1237,19 @@
           this.els.title.textContent = t.title;
           this.els.artist.textContent = t.artist || "Unknown Artist";
           this.els.album.textContent = t.album || "";
-          this.els.idx.textContent = `${ui.player.pos + 1} of ${ui.player.queue.length}`;
           this.paintBadges();
           const cover = await ui.lib.trackCover(t).catch(() => null);
           this.els.art.src = cover || DEFAULT_COVER;
         },
         paintBadges() {
+          const on = ui.player.shuffle;
+          // Shuffle reorders the queue, so the place in it moves too.
+          this.els.idx.textContent = ui.player.current() ? `${ui.player.pos + 1} of ${ui.player.queue.length}` : "";
+          this.els.shuffle.classList.toggle("on", on);
+          this.els.shuffle.setAttribute("aria-pressed", on ? "true" : "false");
+          this.els.shuffle.setAttribute("aria-label", on ? "Shuffle is on" : "Shuffle is off");
+          this.els.shufOpts.forEach((el) => el.classList.toggle("on", (el.dataset.on === "1") === on));
           const b = [];
-          if (ui.player.shuffle) b.push(PT.icons.shuffle);
           if (ui.player.repeat === "all") b.push(PT.icons.repeat);
           if (ui.player.repeat === "one") b.push(PT.icons.repeatOne);
           this.els.badges.innerHTML = b.join("");
@@ -1093,12 +1258,36 @@
           if (this._dragging) return;
           const a = ui.player.audio;
           const d = a.duration;
-          const cur = a.currentTime || 0;
-          this.els.fill.style.width = Number.isFinite(d) && d > 0 ? `${(cur / d) * 100}%` : "0%";
+          // A song put back after a restart shows where it will start from.
+          const cur = ui.player.position();
+          this.els.fill.style.width = Number.isFinite(d) && d > 0 ? `${Math.min(1, cur / d) * 100}%` : "0%";
           this.els.tEl.textContent = fmtTime(cur);
           this.els.tRem.textContent = Number.isFinite(d) ? "-" + fmtTime(Math.max(0, d - cur)) : "--:--";
         },
         _volTimer: null,
+        _shufTimer: null,
+        // The wheel on the Shuffle stop: forward is on, back is off.
+        _pickShuffle(on) {
+          if (on !== ui.player.shuffle) {
+            ui.wheel.tick();
+            ui.setShuffle(on);
+          }
+          this._armShuffleExit();
+        },
+        _armShuffleExit() {
+          clearTimeout(this._shufTimer);
+          this._shufTimer = setTimeout(() => {
+            if (this.mode === "shuffle") this._setMode("normal");
+          }, SHUFFLE_MODE_MS);
+        },
+        _setMode(mode) {
+          this.mode = mode;
+          this.np.classList.remove("volmode");
+          this.np.classList.toggle("scrub", mode === "scrub");
+          this.np.classList.toggle("shufmode", mode === "shuffle");
+          if (mode === "shuffle") this._armShuffleExit();
+          else clearTimeout(this._shufTimer);
+        },
         onScroll(dir) {
           if (this.mode === "scrub") {
             const d = ui.player.audio.duration;
@@ -1106,6 +1295,10 @@
             ui.player.seekBy(dir * step);
             ui.wheel.tick();
             this.paintTime();
+            return;
+          }
+          if (this.mode === "shuffle") {
+            this._pickShuffle(dir > 0);
             return;
           }
           this.mode = "vol";
@@ -1119,15 +1312,12 @@
             if (this.mode === "vol") this.mode = "normal";
           }, 1300);
         },
+        // The center button steps through scrubbing, then Shuffle, then back
+        // to the volume.
         onSelect() {
-          if (this.mode === "scrub") {
-            this.mode = "normal";
-            this.np.classList.remove("scrub");
-          } else {
-            this.mode = "scrub";
-            this.np.classList.remove("volmode");
-            this.np.classList.add("scrub");
-          }
+          if (this.mode === "scrub") this._setMode("shuffle");
+          else if (this.mode === "shuffle") this._setMode("normal");
+          else this._setMode("scrub");
         },
       };
     }
@@ -1187,7 +1377,13 @@
       if (!url) return;
       const res = await window.peerskyKeepOffline(url).catch(() => null);
       if (res && res.ok) {
-        this.lib.markSourceKept(url).catch(() => {});
+        await this.lib.markSourceKept(url).catch(() => {});
+        this._keepAsked.set(pl.id, Date.now());
+        // A host that keeps songs one by one shows each of them arrive.
+        if (this._keepsSongs(pl)) {
+          this.push(this.keepScreen(pl.id));
+          return;
+        }
         this.dialog({
           msg: res.status === "waiting-for-wifi" ? "Waiting for Wi-Fi" : "Downloading",
           sub: res.status === "waiting-for-wifi"
@@ -1202,6 +1398,116 @@
         sub: (res && res.error) || "Nothing answered for that folder.",
         buttons: [{ label: "OK" }],
       });
+    }
+
+    // ---------- songs kept on the device ----------
+
+    // The host keeps this playlist and can say which songs made it.
+    _keepsSongs(pl) {
+      return typeof window !== "undefined" && typeof window.peerskyKeepSongs === "function" &&
+        !!pl && this.lib.isSourceKept(pl.sourceUrl);
+    }
+
+    // While a kept playlist, or its progress, is on screen and some of it is
+    // still missing, ask how its songs are doing every few seconds.
+    _watchKept() {
+      if (this._keepTimer || typeof document === "undefined") return;
+      const tick = async () => {
+        const top = this.top();
+        const id = top && top.keepId;
+        if (!id || document.hidden || this._keptDone(id)) { this._keepTimer = null; return; }
+        try {
+          await this._checkKept(id);
+        } catch (err) {
+          console.warn("could not check kept songs", err);
+        }
+        this._keepTimer = setTimeout(tick, KEEP_CHECK_MS);
+      };
+      this._keepTimer = setTimeout(tick, 0);
+    }
+
+    // Every song saved, and no song added since.
+    _keptDone(id) {
+      const known = this._kept.get(id);
+      return !!known && known.complete && known.list === songList(this.lib.playlistTracks(id));
+    }
+
+    async _checkKept(id) {
+      const pl = this.lib.playlist(id);
+      if (!pl) return null;
+      const before = this._kept.get(id) || null;
+      const tracks = this.lib.playlistTracks(id);
+      const state = await this.lib.keepSongs(tracks, before);
+      if (!state) return null;
+      state.list = songList(tracks);
+      this._kept.set(id, state);
+      if (!state.complete) this._askAgain(pl);
+      const top = this.top();
+      if (top && top.keepId === id && top.onKeep) top.onKeep(state, before);
+      return state;
+    }
+
+    // Songs still missing when the playlist is opened again: ask PeerSky to
+    // keep its folder once more, which starts over a download that stopped.
+    _askAgain(pl) {
+      const last = this._keepAsked.get(pl.id) || 0;
+      if (Date.now() - last < KEEP_ASK_AGAIN_MS || typeof window.peerskyKeepOffline !== "function") return;
+      this._keepAsked.set(pl.id, Date.now());
+      Promise.resolve(window.peerskyKeepOffline(pl.sourceUrl)).catch(() => {});
+    }
+
+    // Every song of a kept playlist as it reaches the device: how many are
+    // here, which one is coming in, and why the rest are not.
+    keepScreen(id) {
+      const ui = this;
+      return {
+        name: "keep",
+        title: "On This Device",
+        keepId: id,
+        render(page) {
+          const el = h("div", "keep");
+          el.innerHTML = `<div class="keep-in">
+            <span class="keep-icon"></span>
+            <div class="big"></div>
+            <div class="keep-bar"><div class="keep-fill"></div></div>
+            <div class="count"></div>
+            <div class="keep-song"><span class="keep-now"></span> <b></b></div>
+            <div class="keep-note"></div>
+          </div>`;
+          page.appendChild(el);
+          this.els = {
+            icon: el.querySelector(".keep-icon"),
+            big: el.querySelector(".big"),
+            fill: el.querySelector(".keep-fill"),
+            count: el.querySelector(".count"),
+            song: el.querySelector(".keep-song"),
+            now: el.querySelector(".keep-now"),
+            title: el.querySelector(".keep-song b"),
+            note: el.querySelector(".keep-note"),
+          };
+          this.paint(ui._kept.get(id) || null);
+          ui._watchKept();
+        },
+        onKeep(state) { if (this.els) this.paint(state); },
+        paint(state) {
+          const view = keepView(state);
+          const els = this.els;
+          if (els.icon.dataset.kind !== view.icon) {
+            els.icon.dataset.kind = view.icon;
+            els.icon.className = "keep-icon " + view.icon;
+            els.icon.innerHTML = view.icon === "done" ? PT.icons.onDevice : view.icon === "stuck" ? PT.icons.offDevice : PT.icons.sync;
+          }
+          els.big.textContent = view.big;
+          els.fill.style.width = `${Math.round(view.fraction * 100)}%`;
+          els.count.textContent = view.count;
+          els.now.textContent = view.song ? "Now saving" : "";
+          els.title.textContent = view.song;
+          els.song.hidden = !view.song;
+          els.note.textContent = view.note;
+        },
+        onScroll() {},
+        onSelect() { ui.pop(); },
+      };
     }
 
     // sharing publishes the songs to a hyper:// drive, then hands out a
@@ -1536,7 +1842,7 @@
         rows: () => [
           {
             label: "Shuffle", value: s.shuffle ? "Songs" : "Off",
-            action: () => { s.shuffle = !s.shuffle; ui.player.setShuffle(s.shuffle); commit(); },
+            action: () => { ui.setShuffle(!s.shuffle); commit(); },
           },
           {
             label: "Repeat", value: { off: "Off", one: "One", all: "All" }[s.repeat],
@@ -1576,6 +1882,40 @@
     }
   }
 
+  const songList = (tracks) => tracks.map((t) => t.id).join(",");
+
+  function allSavedText(total) {
+    if (!total) return "This playlist has no songs";
+    return total === 1 ? "The song is on this device" : `All ${total} songs are on this device`;
+  }
+
+  // What the progress screen says for the host's latest answer about a kept
+  // playlist (see keepState in library.js). A song is only counted once all
+  // of it is here, and the rest always says why it is not.
+  function keepView(state) {
+    if (!state) return { icon: "busy", big: "Saving Songs", fraction: 0, count: "Checking…", song: "", note: "" };
+    if (state.complete) {
+      return { icon: "done", big: "All Saved", fraction: 1, count: allSavedText(state.total), song: "", note: "They play with the network off." };
+    }
+    const fraction = state.saved / state.total;
+    const count = `${state.saved} of ${state.total} on this device`;
+    if (state.cannot === state.total - state.saved) {
+      const note = state.cannot === 1 ? "1 is a web link, which cannot be kept." : `${state.cannot} are web links, which cannot be kept.`;
+      return { icon: "stuck", big: "On This Device", fraction, count, song: "", note };
+    }
+    if (!state.current) {
+      return { icon: "stuck", big: "Waiting", fraction, count, song: "", note: "The rest saves when the person who shared them is back online." };
+    }
+    return {
+      icon: "busy",
+      big: "Saving Songs",
+      fraction,
+      count,
+      song: state.current.title,
+      note: state.stuck ? "Some are waiting for the person who shared them." : "",
+    };
+  }
+
   function msgEl(opts) {
     const el = h("div", "msg");
     el.innerHTML = `<div class="msg-in">${PT.icons.note}<div class="big"></div><div class="small"></div></div>`;
@@ -1585,6 +1925,7 @@
   }
 
   PT.barFraction = barFraction;
+  PT.keepView = keepView;
   PT.UI = UI;
   PT.DEFAULT_COVER = DEFAULT_COVER;
   PT.fmtTime = fmtTime;

@@ -16,6 +16,11 @@
       this.repeat = "off"; // off | all | one
       this._blobUrl = null;
       this._unlocked = false;
+      // A song can be loaded without being played, the one put back after a
+      // restart. Its place waits for the file to say how long it is.
+      this._cued = false;
+      this._failed = false;
+      this._pendingSeek = null;
 
       audio.addEventListener("ended", () => this._onEnded());
       audio.addEventListener("play", () => this._emitState());
@@ -25,12 +30,17 @@
         this._positionState();
       });
       audio.addEventListener("durationchange", () => this.dispatchEvent(new CustomEvent("time")));
+      audio.addEventListener("loadedmetadata", () => this._applyPendingSeek());
       // Where the playhead actually landed, and how fast it is moving: both are
       // what the system scrubber draws itself from.
       audio.addEventListener("seeked", () => this._positionState(true));
       audio.addEventListener("ratechange", () => this._positionState(true));
       audio.addEventListener("error", () => {
-        if (this.current()) this.dispatchEvent(new CustomEvent("trackerror", { detail: this.current() }));
+        if (!this.current()) return;
+        // A song that was only put back, not played, says it cannot be
+        // reached when play is pressed, not the moment the app opens.
+        if (this._cued) { this._failed = true; return; }
+        this.dispatchEvent(new CustomEvent("trackerror", { detail: this.current() }));
       });
       audio.volume = 1;
 
@@ -57,6 +67,7 @@
       return this.pos >= 0 ? this.queue[this.pos] : null;
     }
 
+    // opts.autoplay false loads the first song without playing it.
     async playContext(tracks, startIndex = 0, opts = {}) {
       if (!tracks.length) return;
       this.baseQueue = tracks.slice();
@@ -64,39 +75,42 @@
       if (useShuffle) {
         const first = tracks[startIndex];
         const rest = tracks.filter((_, i) => i !== startIndex);
-        for (let i = rest.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1));
-          const tmp = rest[i]; rest[i] = rest[j]; rest[j] = tmp;
-        }
+        shuffleInPlace(rest);
         this.queue = [first].concat(rest);
         this.pos = 0;
       } else {
         this.queue = tracks.slice();
         this.pos = startIndex;
       }
-      await this._load(true);
+      this._queueChanged();
+      await this._load(opts.autoplay !== false);
     }
 
     setShuffle(on) {
       this.shuffle = on;
-      if (!this.queue.length) return;
+      if (!this.queue.length) { this._emitState(); return; }
       const cur = this.current();
       if (on) {
         const rest = this.queue.filter((t) => t !== cur);
-        for (let i = rest.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1));
-          const tmp = rest[i]; rest[i] = rest[j]; rest[j] = tmp;
-        }
+        shuffleInPlace(rest);
         this.queue = cur ? [cur].concat(rest) : rest;
         this.pos = cur ? 0 : -1;
       } else {
         this.queue = this.baseQueue.slice();
         this.pos = Math.max(0, this.queue.indexOf(cur));
       }
+      this._queueChanged();
       this._emitState();
     }
 
-    async _load(autoplay) {
+    // Loads another song of the queue, paused at its start.
+    async cueAt(index) {
+      if (index < 0 || index >= this.queue.length) return;
+      this.pos = index;
+      await this._load(false);
+    }
+
+    async _load(autoplay, at = 0) {
       const track = this.current();
       if (!track) return;
       if (this._blobUrl) { URL.revokeObjectURL(this._blobUrl); this._blobUrl = null; }
@@ -105,9 +119,16 @@
         src = await this.library.trackAudioUrl(track);
       } catch (err) {
         console.warn("cannot load track", track.title, err);
-        this.dispatchEvent(new CustomEvent("trackerror", { detail: track }));
+        this._cued = !autoplay;
+        this._failed = !autoplay;
+        this._pendingSeek = at > 0 ? at : null;
+        if (autoplay) this.dispatchEvent(new CustomEvent("trackerror", { detail: track }));
         return;
       }
+      // Set with the new source, so the old one finishing up cannot take them.
+      this._cued = !autoplay;
+      this._failed = false;
+      this._pendingSeek = at > 0 ? at : null;
       if (src.startsWith("blob:")) this._blobUrl = src;
       this.audio.src = src;
       if (autoplay) this.audio.play().catch(() => {});
@@ -116,10 +137,88 @@
       this._mediaMetadata(track);
     }
 
+    play() {
+      if (!this.current()) return;
+      this._cued = false;
+      // It could not be loaded while it was only put back: try again now that
+      // someone wants it, and say so if it still fails.
+      if (this._failed) {
+        this._failed = false;
+        this._load(true, this.position());
+        return;
+      }
+      this.audio.play().catch(() => {});
+    }
+
     playPause() {
       if (!this.current()) return;
-      if (this.audio.paused) this.audio.play().catch(() => {});
+      if (this.audio.paused) this.play();
       else this.audio.pause();
+    }
+
+    // Where in the song we are, counting a place still waiting to be applied.
+    position() {
+      if (this._pendingSeek != null) return this._pendingSeek;
+      return this.audio.currentTime || 0;
+    }
+
+    _applyPendingSeek() {
+      const at = this._pendingSeek;
+      if (at == null) return;
+      this._pendingSeek = null;
+      this.seekTo(at);
+    }
+
+    _queueChanged() {
+      this.dispatchEvent(new CustomEvent("queuechange"));
+    }
+
+    // ---- the song you were on, kept across a restart ----
+
+    // The queue, as ids in play order and in the order it was picked from.
+    // Play Only songs are not in the library, so they are kept whole.
+    savedQueue() {
+      if (!this.queue.length) return null;
+      const ids = (list) => list.map((t) => t.id);
+      const shuffled = this.baseQueue.length !== this.queue.length ||
+        this.baseQueue.some((t, i) => t !== this.queue[i]);
+      const temps = this.baseQueue.filter((t) => t.temp).map((t) => {
+        const copy = Object.assign({}, t);
+        delete copy.coverUrl; // a blob url, gone after a restart
+        return copy;
+      });
+      return { v: 1, ids: ids(this.queue), base: shuffled ? ids(this.baseQueue) : null, temps };
+    }
+
+    // Which song, and where in it. Small, so it can be written often.
+    savedPlace() {
+      const track = this.current();
+      if (!track) return null;
+      return { v: 1, id: track.id, pos: this.pos, time: Math.round(this.position() * 10) / 10 };
+    }
+
+    // Puts a saved queue back, paused on the same song at the same place.
+    // find(id) gives the library's song. Returns false, and changes nothing,
+    // when that song is gone.
+    restore(queue, place, find) {
+      if (!queue || !place || !Array.isArray(queue.ids) || typeof place.id !== "string") return false;
+      const temps = new Map();
+      for (const t of Array.isArray(queue.temps) ? queue.temps : []) {
+        if (t && typeof t.id === "string" && t.kind === "url" && typeof t.url === "string") temps.set(t.id, t);
+      }
+      const look = (id) => (typeof id === "string" && (find(id) || temps.get(id))) || null;
+      const tracks = queue.ids.map(look).filter(Boolean);
+      const current = look(place.id);
+      // The saved index first, for a queue that holds a song twice.
+      const pos = current && tracks[place.pos] === current ? place.pos : tracks.indexOf(current);
+      if (!current || pos < 0) return false;
+      const base = Array.isArray(queue.base) ? queue.base.map(look).filter(Boolean) : [];
+      this.queue = tracks;
+      this.baseQueue = base.length ? base : tracks.slice();
+      this.pos = pos;
+      const time = Number(place.time);
+      this._load(false, Number.isFinite(time) ? time : 0);
+      return true;
     }
 
     async next() {
@@ -205,7 +304,7 @@
       if (!("mediaSession" in navigator)) return;
       const ms = navigator.mediaSession;
       const safe = (name, fn) => { try { ms.setActionHandler(name, fn); } catch {} };
-      safe("play", () => this.audio.play().catch(() => {}));
+      safe("play", () => this.play());
       safe("pause", () => this.audio.pause());
       safe("previoustrack", () => this.prev());
       safe("nexttrack", () => this.next());
@@ -254,6 +353,14 @@
         });
       } catch {}
     }
+  }
+
+  function shuffleInPlace(list) {
+    for (let i = list.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      const tmp = list[i]; list[i] = list[j]; list[j] = tmp;
+    }
+    return list;
   }
 
   // Sound routed somewhere that is not the phone's own speaker. Car stereos
