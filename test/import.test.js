@@ -59,3 +59,28 @@ test("hyper folders are listed with noResolve", async () => {
   }
   assert.deepEqual(seen, ["hyper://drive/music/?noResolve", "http://host/music/"]);
 });
+
+// Upload Files handed the dialog a bare count, which it read as nothing found:
+// "No new songs found" came up for songs it had just added.
+test("an upload says how many songs were new and how many it found", async () => {
+  L.readTags = async () => ({ title: "t" });
+  L.fileSource = (f) => f;
+  const saved = [];
+  const lib = {
+    tracks: new Map(),
+    _mkTrack: (id) => ({ id }),
+    async _saveTrack(track) { saved.push(track.id); this.tracks.set(track.id, track); },
+    _emitProgress() {},
+    _invalidate() {},
+  };
+  const file = (name) => ({ name, size: 1, lastModified: 1 });
+
+  const first = await L.Library.prototype.addFiles.call(lib, [file("a.mp3"), file("notes.txt")]);
+  assert.deepEqual(first, { added: 1, found: 1 });
+
+  const again = await L.Library.prototype.addFiles.call(lib, [file("a.mp3"), file("b.flac")]);
+  assert.deepEqual(again, { added: 1, found: 2 });
+
+  assert.deepEqual(await L.Library.prototype.addFiles.call(lib, [file("cover.jpg")]), { added: 0, found: 0 });
+  assert.equal(saved.length, 2);
+});

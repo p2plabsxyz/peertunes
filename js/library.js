@@ -290,9 +290,12 @@
 
     // ---- import: local files ----
 
+    // Says how many songs were new and how many it found, as a sync does: the
+    // dialog after an upload read a bare count as nothing found, and said "No
+    // new songs found" for songs it had just added.
     async addFiles(files) {
       const list = Array.from(files).filter((f) => PT.isAudioName(f.name) || (f.type || "").startsWith("audio/"));
-      if (!list.length) return 0;
+      if (!list.length) return { added: 0, found: 0 };
       this.busy = true;
       let added = 0;
       const total = list.length;
@@ -320,7 +323,7 @@
         if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
         this._invalidate();
       }
-      return added;
+      return { added, found: total };
     }
 
     // ---- import: hyper:// or http(s) urls ----
