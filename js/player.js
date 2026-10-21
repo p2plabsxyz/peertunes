@@ -243,6 +243,23 @@
       this._emitState();
     }
 
+    // Nothing loaded, as before the first song: the songs it played are gone.
+    forget() {
+      this.audio.pause();
+      this.audio.removeAttribute("src");
+      this.audio.load();
+      if (this._blobUrl) { URL.revokeObjectURL(this._blobUrl); this._blobUrl = null; }
+      this.queue = [];
+      this.baseQueue = [];
+      this.pos = -1;
+      this._cued = false;
+      this._failed = false;
+      this._pendingSeek = null;
+      if ("mediaSession" in navigator) navigator.mediaSession.metadata = null;
+      this._queueChanged();
+      this._emitState();
+    }
+
     async _onEnded() {
       if (this.repeat === "one") {
         this.audio.currentTime = 0;

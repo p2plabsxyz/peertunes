@@ -145,6 +145,15 @@
     writeSaved(PLACE_KEY, player.savedPlace());
   };
   player.addEventListener("queuechange", () => writeSaved(QUEUE_KEY, player.savedQueue()));
+  // An emptied library takes the song that was on with it, and it is not put
+  // back after a restart either.
+  library.addEventListener("cleared", () => {
+    player.forget();
+    try {
+      localStorage.removeItem(QUEUE_KEY);
+      localStorage.removeItem(PLACE_KEY);
+    } catch {}
+  });
   player.addEventListener("trackchange", savePlace);
   player.addEventListener("state", savePlace);
   player.addEventListener("time", () => {

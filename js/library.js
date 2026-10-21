@@ -207,6 +207,20 @@
     try { localStorage.setItem(PUBLISHED_KEY, "1"); } catch {}
   }
 
+  // PeerSky on a phone gives the page a new id each time its P2P data is
+  // cleared. Songs kept under an older one were here before that and go with
+  // the rest of it, the drive this library published included. The first id
+  // a library sees is only noted.
+  const HOST_RESET_KEY = "peertunes.host-reset";
+
+  function hostReset() {
+    const id = typeof window.peerskyResetId === "string" ? window.peerskyResetId : "";
+    if (!id) return null;
+    let seen = null;
+    try { seen = localStorage.getItem(HOST_RESET_KEY); } catch {}
+    return { id, changed: seen !== null && seen !== id, noted: seen === id };
+  }
+
   function sanitizeFileName(s) {
     return (s || "track").replace(/[\/\\?%*:|"<>\u0000-\u001f]/g, "-").trim().slice(0, 80) || "track";
   }
@@ -245,6 +259,14 @@
         req.onsuccess = () => resolve(req.result);
         req.onerror = () => reject(req.error);
       });
+      const reset = hostReset();
+      if (reset && reset.changed) {
+        await this.clear();
+        try { localStorage.removeItem(PUBLISHED_KEY); } catch {}
+      }
+      if (reset && !reset.noted) {
+        try { localStorage.setItem(HOST_RESET_KEY, reset.id); } catch {}
+      }
       const all = await idb(this.db, "tracks", "readonly", (s) => s.getAll());
       for (const t of all || []) this.tracks.set(t.id, t);
       const pls = await idb(this.db, "playlists", "readonly", (s) => s.getAll());
@@ -884,6 +906,7 @@
       this._coverUrls.clear();
       this._generation++;
       this._invalidate();
+      this.dispatchEvent(new CustomEvent("cleared"));
     }
 
     // ---- playlists ----
