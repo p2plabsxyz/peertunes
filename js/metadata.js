@@ -186,6 +186,23 @@
     return { title: "", artist: "", album: "", albumArtist: "", year: null, genre: "", track: null, trackTotal: null, disc: null, picture: null };
   }
 
+  // A file can hold several pictures. The first one used to be the cover,
+  // and it can be the back of the sleeve or a 32 pixel file icon. Now the
+  // front cover wins, then one marked as nothing in particular, then any
+  // picture but an icon.
+  function pictureRank(type) {
+    if (type === 3) return 0;
+    if (type === 0 || type == null) return 1;
+    if (type === 1 || type === 2) return 3;
+    return 2;
+  }
+
+  function betterPicture(current, next) {
+    if (!next) return current;
+    if (!current) return next;
+    return pictureRank(next.type) < pictureRank(current.type) ? next : current;
+  }
+
   // "01 - Artist - Title" style guesses from the file name
   function tagsFromName(name) {
     const t = emptyTags();
@@ -252,16 +269,23 @@
       const key = ver === 2 ? map2[id] || id : id;
 
       if (key === "APIC") {
-        if (!tags.picture) tags.picture = parseApic(data, ver);
+        tags.picture = betterPicture(tags.picture, parseApic(data, ver));
         continue;
       }
       if (key[0] !== "T") continue;
       const enc = data[0];
-      const text = decodeById3Enc(enc, data.subarray(1)).split("\0")[0].trim();
-      if (!text) continue;
+      // ID3v2.4 keeps several values in one frame, apart by a null.
+      const values = decodeById3Enc(enc, data.subarray(1)).split("\0").map((v) => v.replace(/^\uFEFF/, "").trim()).filter(Boolean);
+      if (!values.length) continue;
+      const text = values[0];
+      if (key === "TXXX") {
+        // Some taggers keep the album artist here rather than in TPE2.
+        if (values.length > 1 && /^album[ _]?artist$/i.test(values[0]) && !tags.albumArtist) tags.albumArtist = values[1];
+        continue;
+      }
       if (key === "TIT2") tags.title = text;
-      else if (key === "TPE1") tags.artist = text;
-      else if (key === "TPE2") tags.albumArtist = text;
+      else if (key === "TPE1") tags.artist = values.join(", ");
+      else if (key === "TPE2") tags.albumArtist = values.join(", ");
       else if (key === "TALB") tags.album = text;
       else if (key === "TRCK") { const t = parseTrackNo(text); tags.track = t[0]; tags.trackTotal = t[1]; }
       else if (key === "TPOS") tags.disc = parseTrackNo(text)[0];
@@ -296,11 +320,12 @@
         if (!mime.includes("/")) mime = "image/" + mime;
         p = e + 1;
       }
-      p += 1; // picture type
+      const type = data[p];
+      p += 1;
       const term = findTerm(data, p, enc); // skip description
       const img = data.slice(term[1]);
       if (img.length < 32) return null;
-      return { mime, data: img };
+      return { mime, data: img, type };
     } catch { return null; }
   }
 
@@ -325,7 +350,8 @@
 
   function parseFlacPicture(b) {
     try {
-      let p = 4; // skip type
+      const type = u32(b, 0);
+      let p = 4;
       const mlen = u32(b, p); p += 4;
       const mime = ascii(b, p, mlen).toLowerCase(); p += mlen;
       const dlen = u32(b, p); p += 4 + dlen; // description
@@ -333,7 +359,7 @@
       const size = u32(b, p); p += 4;
       const img = b.slice(p, p + size);
       if (img.length < 32) return null;
-      return { mime: mime || "image/jpeg", data: img };
+      return { mime: mime || "image/jpeg", data: img, type };
     } catch { return null; }
   }
 
@@ -353,27 +379,27 @@
       if (key === "TITLE" && !tags.title) tags.title = val;
       else if (key === "ARTIST" && !tags.artist) tags.artist = val;
       else if (key === "ALBUM" && !tags.album) tags.album = val;
-      else if (key === "ALBUMARTIST" && !tags.albumArtist) tags.albumArtist = val;
+      else if ((key === "ALBUMARTIST" || key === "ALBUM ARTIST" || key === "ALBUM_ARTIST") && !tags.albumArtist) tags.albumArtist = val;
       else if (key === "TRACKNUMBER" && tags.track == null) { const t = parseTrackNo(val); tags.track = t[0]; tags.trackTotal = t[1]; }
       else if (key === "TRACKTOTAL" && tags.trackTotal == null) tags.trackTotal = parseTrackNo(val)[0];
       else if (key === "DISCNUMBER" && tags.disc == null) tags.disc = parseTrackNo(val)[0];
       else if ((key === "DATE" || key === "YEAR") && !tags.year) tags.year = yearOf(val);
       else if (key === "GENRE" && !tags.genre) tags.genre = val;
-      else if (key === "METADATA_BLOCK_PICTURE" && !tags.picture) {
+      else if (key === "METADATA_BLOCK_PICTURE") {
         try {
           const bin = atob(val.replace(/\s+/g, ""));
           const u = new Uint8Array(bin.length);
           for (let j = 0; j < bin.length; j++) u[j] = bin.charCodeAt(j);
-          tags.picture = parseFlacPicture(u);
+          tags.picture = betterPicture(tags.picture, parseFlacPicture(u));
         } catch {}
       }
     }
     return p;
   }
 
-  async function readFlac(src) {
+  async function readFlac(src, start = 0) {
     const tags = emptyTags();
-    let off = 4;
+    let off = start + 4;
     for (let i = 0; i < 64; i++) {
       const h = await src.read(off, 4);
       if (h.length < 4) break;
@@ -383,7 +409,7 @@
       if (type === 4 || type === 6) {
         const b = await src.read(off + 4, size);
         if (type === 4) applyVorbisComment(tags, b);
-        else if (!tags.picture) tags.picture = parseFlacPicture(b);
+        else tags.picture = betterPicture(tags.picture, parseFlacPicture(b));
       }
       off += 4 + size;
       if (last) break;
@@ -472,43 +498,51 @@
 
   // ---------- OGG ----------
 
-  async function readOgg(src) {
-    // rebuild the logical stream from page payloads, then find the comment header
-    const raw = await src.read(0, 256 * 1024);
-    const chunks = [];
-    let p = 0;
-    while (p + 27 < raw.length) {
-      if (ascii(raw, p, 4) !== "OggS") { p++; continue; }
-      const nseg = raw[p + 26];
-      const segTable = raw.subarray(p + 27, p + 27 + nseg);
-      let plen = 0;
-      for (let i = 0; i < nseg; i++) plen += segTable[i];
-      const start = p + 27 + nseg;
-      chunks.push(raw.subarray(start, Math.min(start + plen, raw.length)));
-      p = start + plen;
-    }
-    let total = 0;
-    for (const c of chunks) total += c.length;
-    const stream = new Uint8Array(total);
-    let n = 0;
-    for (const c of chunks) { stream.set(c, n); n += c.length; }
+  // The comment header, the stream's second packet, can run far past the
+  // first pages when it carries a picture. A fixed 256KB read cut the picture
+  // off, and every comment after it, so pages are read until it is whole.
+  const OGG_HEADER_LIMIT = 16 * 1024 * 1024;
 
+  async function readOgg(src) {
     const tags = emptyTags();
-    const findMarker = (m) => {
-      outer: for (let i = 0; i + m.length < stream.length; i++) {
-        for (let j = 0; j < m.length; j++) if (stream[i + j] !== m.charCodeAt(j)) continue outer;
-        return i + m.length;
-      }
-      return -1;
-    };
-    let at = findMarker("OpusTags");
-    if (at < 0) {
-      // first "vorbis" hit is the id header, the comment header starts with \x03vorbis
-      for (let i = 0; i + 7 < stream.length; i++) {
-        if (stream[i] === 0x03 && ascii(stream, i + 1, 6) === "vorbis") { at = i + 7; break; }
+    const packets = [];
+    let parts = [];
+    let serial = null;
+    let off = 0;
+    while (packets.length < 2 && off < OGG_HEADER_LIMIT) {
+      const head = await src.read(off, 27 + 255);
+      if (head.length < 27 || ascii(head, 0, 4) !== "OggS") break;
+      const nseg = head[26];
+      if (head.length < 27 + nseg) break;
+      const pageSerial = u32le(head, 14);
+      const lens = head.subarray(27, 27 + nseg);
+      let plen = 0;
+      for (let i = 0; i < nseg; i++) plen += lens[i];
+      const pageStart = off + 27 + nseg;
+      off = pageStart + plen;
+      if (serial === null) serial = pageSerial;
+      if (pageSerial !== serial) continue; // another stream's page
+      const body = await src.read(pageStart, plen);
+      let q = 0;
+      for (let i = 0; i < nseg && packets.length < 2; i++) {
+        parts.push(body.subarray(q, q + lens[i]));
+        q += lens[i];
+        if (lens[i] < 255) {
+          let total = 0;
+          for (const part of parts) total += part.length;
+          const packet = new Uint8Array(total);
+          let n = 0;
+          for (const part of parts) { packet.set(part, n); n += part.length; }
+          packets.push(packet);
+          parts = [];
+        }
       }
     }
-    if (at >= 0) applyVorbisComment(tags, stream.subarray(at));
+    const comment = packets[1];
+    if (!comment) return tags;
+    if (ascii(comment, 0, 8) === "OpusTags") applyVorbisComment(tags, comment.subarray(8));
+    else if (comment[0] === 3 && ascii(comment, 1, 6) === "vorbis") applyVorbisComment(tags, comment.subarray(7));
+    else if ((comment[0] & 0x7f) === 4) applyVorbisComment(tags, comment.subarray(4)); // FLAC in Ogg
     return tags;
   }
 
@@ -548,7 +582,9 @@
           async read(o, l) { return src.read(off + 8 + o, Math.min(l, size - o)); },
         };
         const v2 = await readId3v2(sub, 0);
-        if (v2) Object.assign(tags, v2);
+        // Its own fields first, the INFO list's where it has none: an empty
+        // one used to blank out a title the list had.
+        if (v2) Object.assign(tags, merge(v2, { ...tags }));
       }
       off += 8 + size + (size & 1);
     }
@@ -572,7 +608,11 @@
       const magic = ascii(head, 0, 4);
       if (magic.startsWith("ID3")) {
         tags = await readId3v2(src, 0);
-        if (tags && (!tags.title || !tags.artist || !tags.album)) merge(tags, await readId3v1(src).catch(() => null));
+        // Some FLAC files carry an ID3 tag in front of their own. Their own
+        // comments and pictures come after it, and they are the fuller ones.
+        const flacAt = 10 + syncsafe(head, 6) + (head[5] & 0x10 ? 10 : 0);
+        if (/\.flac$/i.test(src.name || "") && ascii(await src.read(flacAt, 4), 0, 4) === "fLaC") tags = merge(await readFlac(src, flacAt), tags);
+        else if (tags && (!tags.title || !tags.artist || !tags.album)) merge(tags, await readId3v1(src).catch(() => null));
       } else if (magic === "fLaC") {
         tags = await readFlac(src);
       } else if (magic === "OggS") {
