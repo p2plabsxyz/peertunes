@@ -74,7 +74,7 @@ On the other end, opening the link in PeerSky asks before touching anything:
 
 In PeerSky Mobile, `Keep On This Device…` on an imported playlist saves every song on the phone, so it plays with the network off. The screen counts them as they arrive ("12 of 20 on this device", with the song being saved), and says when all of them are in. A song counts only once all of it is on the phone. When the person who shared the playlist goes offline, it says the rest saves once they are back, and it carries on by itself when the playlist is opened again. The playlist row shows how many are on the phone, and each song has a mark: blue when it is on the phone, grey when it is not yet.
 
-Publishing needs PeerSky (that is where the drive writes live). Outside PeerSky you can still share folders you synced from a URL. The app accepts `#playlist=` or `?playlist=` (and old `src=` links) with `hyper://`, `ipfs://`, `ipns://` and http(s) sources.
+Publishing needs PeerSky (that is where the drive writes live), on a desktop or a phone. On a phone the web view cannot fetch `hyper://`, so PeerSky gives the page `window.peerskyHyperWrite(url)`, which turns a `hyper://` address into one on the app's own server, and the writes go there. A phone shares the drive while PeerSky is open, and opens it again when PeerTunes starts. Outside PeerSky you can still share folders you synced from a URL. The app accepts `#playlist=` or `?playlist=` (and old `src=` links) with `hyper://`, `ipfs://`, `ipns://` and http(s) sources.
 
 ## Loading from hyper://
 

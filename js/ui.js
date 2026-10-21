@@ -1544,7 +1544,7 @@
           if (urls.length) {
             this.dialog({
               msg: "Can't publish from here",
-              sub: "Publishing needs PeerSky for desktop right now (mobile drives are read-only). You can still share your synced folders directly.",
+              sub: "Publishing needs PeerTunes inside PeerSky. You can still share your synced folders directly.",
               buttons: [
                 { label: "Share Sources", action: () => this._offerLink(SHARE_BASE + "#" + urls.map((u) => "playlist=" + encodeURIComponent(u)).join("&")) },
                 { label: "Cancel" },
@@ -1554,7 +1554,7 @@
           } else {
             this.dialog({
               msg: "Publishing needs PeerSky",
-              sub: "Open PeerTunes in PeerSky for desktop to publish local songs to a hyper:// drive. Mobile drives are read-only for now.",
+              sub: "Open PeerTunes in PeerSky to publish local songs to a hyper:// drive.",
               buttons: [{ label: "OK" }],
             });
           }
