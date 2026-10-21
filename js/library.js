@@ -207,6 +207,20 @@
     try { localStorage.setItem(PUBLISHED_KEY, "1"); } catch {}
   }
 
+  // PeerSky on a phone gives the page a new id each time its P2P data is
+  // cleared. Songs kept under an older one were here before that and go with
+  // the rest of it, the drive this library published included. The first id
+  // a library sees is only noted.
+  const HOST_RESET_KEY = "peertunes.host-reset";
+
+  function hostReset() {
+    const id = typeof window.peerskyResetId === "string" ? window.peerskyResetId : "";
+    if (!id) return null;
+    let seen = null;
+    try { seen = localStorage.getItem(HOST_RESET_KEY); } catch {}
+    return { id, changed: seen !== null && seen !== id, noted: seen === id };
+  }
+
   function sanitizeFileName(s) {
     return (s || "track").replace(/[\/\\?%*:|"<>\u0000-\u001f]/g, "-").trim().slice(0, 80) || "track";
   }
@@ -214,6 +228,25 @@
   function extOf(name) {
     const m = /\.([a-z0-9]{2,5})(?:$|\?)/i.exec(name || "");
     return m ? "." + m[1].toLowerCase() : "";
+  }
+
+  // A file's picture, and whether the file could be read at all: a read that
+  // fails partway through looks like a file with no picture otherwise.
+  async function readPicture(url) {
+    let failed = false;
+    try {
+      const src = await PT.urlSource(url);
+      if (src && typeof src === "object" && typeof src.read === "function") {
+        const read = src.read;
+        src.read = async (off, len) => {
+          try { return await read(off, len); } catch (err) { failed = true; throw err; }
+        };
+      }
+      const tags = await PT.readTags(src);
+      return { reached: !failed, picture: failed ? null : (tags && tags.picture) || null };
+    } catch {
+      return { reached: false, picture: null };
+    }
   }
 
   class Library extends EventTarget {
@@ -245,12 +278,23 @@
         req.onsuccess = () => resolve(req.result);
         req.onerror = () => reject(req.error);
       });
+      const reset = hostReset();
+      if (reset && reset.changed) {
+        await this.clear();
+        try { localStorage.removeItem(PUBLISHED_KEY); } catch {}
+      }
+      if (reset && !reset.noted) {
+        try { localStorage.setItem(HOST_RESET_KEY, reset.id); } catch {}
+      }
       const all = await idb(this.db, "tracks", "readonly", (s) => s.getAll());
       for (const t of all || []) this.tracks.set(t.id, t);
       const pls = await idb(this.db, "playlists", "readonly", (s) => s.getAll());
       for (const p of pls || []) this.playlists.set(p.id, p);
       this.sources = (await idb(this.db, "sources", "readonly", (s) => s.getAll())) || [];
       this._invalidate();
+      // Covers that had not arrived, often because whoever shared the songs
+      // was offline at the time, are asked for again each time the app opens.
+      this._catchUpCovers().catch(() => {});
       // a drive published from here is shared only while it is open, so it
       // is opened again with the app, for the links already given out
       if (published()) this._publishDrive().catch(() => {});
@@ -269,13 +313,21 @@
       return hash(norm(tags.albumArtist || tags.artist || "unknown") + "|" + norm(tags.album || "unknown"));
     }
 
+    // The cover a song shows. Songs on one album share it, so a song without
+    // a picture of its own shows its album's. A song with no album keeps its
+    // own: songs without an album tag by one artist all showed the first one's.
+    coverKeyOf(tags, id) {
+      return tags.album ? this.albumKeyOf(tags) : "c" + hash(String(id));
+    }
+
     async _saveTrack(track, file, picture) {
       if (picture) {
         const have = await idb(this.db, "covers", "readonly", (s) => s.getKey(track.coverId)).catch(() => null);
         if (!have) {
           await idb(this.db, "covers", "readwrite", (s) => s.put(new Blob([picture.data], { type: picture.mime }), track.coverId));
+          this._coverUrls.delete(track.coverId);
         }
-      } else {
+      } else if (!track.album) {
         track.coverId = null;
       }
       if (file) await idb(this.db, "blobs", "readwrite", (s) => s.put(file, track.id));
@@ -298,7 +350,7 @@
         genre: tags.genre || "",
         track: tags.track || null,
         disc: tags.disc || null,
-        coverId: this.albumKeyOf({ ...tags, album }),
+        coverId: this.coverKeyOf({ ...tags, album }, id),
         added: Date.now(),
       }, extra);
     }
@@ -420,11 +472,12 @@
      * Nothing waits on this and nothing depends on it finishing: the songs are
      * already listed and playable, and a library cleared underneath it stops it.
      */
-    async _coversForAlbums(entries, apply) {
+    async _coversForAlbums(entries, apply, noArt = null) {
       const generation = this._generation;
       const albums = new Map();
       for (const entry of entries) {
-        const key = this.albumKeyOf(entry.tags);
+        const id = entry.id || (entry.track && entry.track.id) || entry.url;
+        const key = this.coverKeyOf(entry.tags, id);
         if (!albums.has(key)) albums.set(key, { key, entries: [] });
         albums.get(key).entries.push(entry);
       }
@@ -433,13 +486,23 @@
       for (const album of albums.values()) {
         if (generation !== this._generation) return;
         let picture = null;
-        // One file speaks for the record. A first file carrying no art rarely
-        // means the others do.
-        try {
-          const tags = await PT.readTags(await PT.urlSource(album.entries[0].url));
-          picture = tags.picture || null;
-        } catch {}
-        if (!picture || generation !== this._generation) continue;
+        let reached = false;
+        // One file speaks for the record. When it has no picture, the next
+        // two are asked: one bare file used to leave the whole album without
+        // a cover. When it cannot be reached, neither can the rest of its
+        // drive, so they wait for the next try.
+        for (const entry of album.entries.slice(0, 3)) {
+          const read = await readPicture(entry.url);
+          if (!read.reached) break;
+          reached = true;
+          picture = read.picture;
+          if (picture || generation !== this._generation) break;
+        }
+        if (generation !== this._generation) return;
+        if (!picture) {
+          if (reached && noArt) await noArt(album.entries).catch(() => {});
+          continue;
+        }
         try {
           if (await apply(album.key, picture, album.entries)) changed = true;
         } catch {}
@@ -449,11 +512,15 @@
 
     _coversForLibrary(entries) {
       return this._coversForAlbums(entries, async (coverId, picture, group) => {
+        let changed = false;
         const have = await idb(this.db, "covers", "readonly", (s) => s.getKey(coverId)).catch(() => null);
         if (!have) {
           await idb(this.db, "covers", "readwrite", (s) => s.put(new Blob([picture.data], { type: picture.mime }), coverId));
+          // A song already showing its album's place for a cover shows the
+          // cover now, which only a fresh look at the store finds.
+          this._coverUrls.delete(coverId);
+          changed = true;
         }
-        let changed = false;
         for (const entry of group) {
           const track = this.tracks.get(entry.id);
           if (!track || track.coverId === coverId) continue;
@@ -462,7 +529,38 @@
           changed = true;
         }
         return changed;
+      }, async (group) => {
+        // Read, and there is no picture in it: not asked again at every start.
+        for (const entry of group) {
+          const track = this.tracks.get(entry.id);
+          if (!track || track.artChecked) continue;
+          track.artChecked = true;
+          await idb(this.db, "tracks", "readwrite", (s) => s.put(track));
+        }
       }).catch(() => {});
+    }
+
+    // Songs whose album's cover is stored by now, from another of its songs,
+    // show it; songs from a drive that still have none are asked for it again.
+    async _catchUpCovers() {
+      const generation = this._generation;
+      const stored = new Set((await idb(this.db, "covers", "readonly", (s) => s.getAllKeys())) || []);
+      if (generation !== this._generation) return;
+      const missing = [];
+      let changed = false;
+      for (const track of this.tracks.values()) {
+        if (track.coverId && stored.has(track.coverId)) continue;
+        const albumCover = track.album ? this.albumKeyOf(track) : null;
+        if (albumCover && stored.has(albumCover)) {
+          track.coverId = albumCover;
+          await idb(this.db, "tracks", "readwrite", (s) => s.put(track));
+          changed = true;
+          continue;
+        }
+        if (track.kind === "url" && track.url && !track.artChecked) missing.push({ id: track.id, url: track.url, tags: track });
+      }
+      if (changed && generation === this._generation) this._invalidate();
+      if (missing.length && generation === this._generation) await this._coversForLibrary(missing);
     }
 
     // Play Only never touches the library, so the picture is hung on the
@@ -884,6 +982,7 @@
       this._coverUrls.clear();
       this._generation++;
       this._invalidate();
+      this.dispatchEvent(new CustomEvent("cleared"));
     }
 
     // ---- playlists ----

@@ -1355,16 +1355,6 @@
             },
             { label: "Share Library…", action: () => ui.shareLibrary() },
           { label: "Rescan Sources", value: String(ui.lib.sources.length), action: () => ui.runImport(() => ui.lib.rescan(), "Rescanning") },
-          {
-            label: "Reset Library…", action: () => ui.dialog({
-              msg: "Erase all music?",
-              sub: "Removes every song, cover and saved source from this device.",
-              buttons: [
-                { label: "Erase", action: () => ui.lib.clear().then(() => ui.replaceAll(ui.rootScreen())) },
-                { label: "Cancel" },
-              ],
-            }),
-          },
           ];
         },
       });
@@ -1868,6 +1858,17 @@
           {
             label: "Backlight Dim", value: s.dim ? "On" : "Off",
             action: () => { s.dim = !s.dim; commit(); },
+          },
+          // Moved here from Add Music, where nobody looked for it.
+          {
+            label: "Clear All Songs…", action: () => ui.dialog({
+              msg: "Clear all songs?",
+              sub: "Removes every song, playlist and cover from this device. Playlists you shared stay shared.",
+              buttons: [
+                { label: "Clear", action: () => ui.lib.clear().then(() => ui.replaceAll(ui.rootScreen())) },
+                { label: "Cancel" },
+              ],
+            }),
           },
         ],
       });

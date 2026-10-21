@@ -238,3 +238,88 @@ test("corrupt input still falls back to the filename", async () => {
   assert.equal(tags.title, "Broken File");
   assert.equal(tags.artist, "Artist");
 });
+
+// ---- covers and fields that were missed or wrong ----
+
+test("the front cover wins over a back cover or an icon that comes first", async () => {
+  const apic = (type, fill) => frame23("APIC", bytes([0], "image/png", [0], [type], [0], PNG.subarray(0, 8), new Uint8Array(48).fill(fill)));
+  let tags = await read(bytes(id3v23([t23("TIT2", "Song"), apic(1, 1), apic(4, 4), apic(3, 3)]), MP3_AUDIO), "x.mp3");
+  assert.equal(tags.picture.data[20], 3);
+  // With no front cover, one marked as nothing in particular beats an icon.
+  tags = await read(bytes(id3v23([apic(1, 1), apic(0, 9)]), MP3_AUDIO), "x.mp3");
+  assert.equal(tags.picture.data[20], 9);
+});
+
+test("several artists in one ID3v2.4 frame, and an album artist kept in TXXX", async () => {
+  const tag = id3v23([
+    frame23("TIT2", bytes([3], "Duet"), { version: 4 }),
+    frame23("TPE1", bytes([3], "Ada", [0], "Grace"), { version: 4 }),
+    frame23("TXXX", bytes([3], "ALBUMARTIST", [0], "Various Artists"), { version: 4 }),
+  ], { version: 4 });
+  const tags = await read(bytes(tag, MP3_AUDIO), "x.mp3");
+  assert.equal(tags.artist, "Ada, Grace");
+  assert.equal(tags.albumArtist, "Various Artists");
+});
+
+test("a flac file with an ID3 tag in front of its own", async () => {
+  const comment = (s) => bytes(le32(s.length), s);
+  const vorbis = bytes(le32(4), "test", le32(3),
+    comment("TITLE=Tidal Memory"), comment("ALBUM=Harbor Lights"), comment("ALBUM ARTIST=Various"));
+  const back = bytes(be32(4), be32(10), "image/jpeg", be32(0), be32(600), be32(600), be32(24), be32(0), be32(JPG.length), JPG);
+  const frontJpg = bytes([0xff, 0xd8, 0xff, 0xe1], new Uint8Array(64).fill(5));
+  const front = bytes(be32(3), be32(10), "image/jpeg", be32(0), be32(600), be32(600), be32(24), be32(0), be32(frontJpg.length), frontJpg);
+  const flac = bytes("fLaC", [0x04], be24(vorbis.length), vorbis, [0x06], be24(back.length), back, [0x86], be24(front.length), front);
+  const tags = await read(bytes(id3v23([t23("TIT2", "From the ID3 tag"), t23("TPE1", "The Lantern Club")]), flac), "x.flac");
+  assert.equal(tags.title, "Tidal Memory");
+  assert.equal(tags.album, "Harbor Lights");
+  assert.equal(tags.albumArtist, "Various");
+  assert.equal(tags.artist, "The Lantern Club", "what only the ID3 tag has is kept");
+  assert.equal(tags.picture.data[3], 0xe1, "the front cover, not the back that came first");
+});
+
+test("an ogg cover bigger than the first 256KB, and the comments after it", async () => {
+  // Packets laced into pages the way an encoder does, a packet running on
+  // over as many pages as it needs.
+  const oggStream = (packets) => {
+    const segs = [];
+    for (const pkt of packets) {
+      let p = 0;
+      while (pkt.length - p >= 255) { segs.push(pkt.subarray(p, p + 255)); p += 255; }
+      segs.push(pkt.subarray(p));
+    }
+    const pages = [];
+    for (let i = 0, seq = 0; i < segs.length; i += 255, seq++) {
+      const chunk = segs.slice(i, i + 255);
+      pages.push(bytes("OggS", [0, seq === 0 ? 2 : 0], new Uint8Array(8), le32(1), le32(seq), new Uint8Array(4), [chunk.length], chunk.map((c) => c.length), ...chunk));
+    }
+    return bytes(...pages);
+  };
+  const big = bytes([0xff, 0xd8, 0xff, 0xe0], new Uint8Array(300 * 1024).fill(3));
+  const pic = bytes(be32(3), be32(10), "image/jpeg", be32(0), be32(600), be32(600), be32(24), be32(0), be32(big.length), big);
+  const comment = (s) => bytes(le32(s.length), s);
+  const head = bytes("OpusHead", [1, 2], [0, 0], le32(48000), [0, 0], [0]);
+  const tagsPkt = bytes("OpusTags", le32(4), "test", le32(3),
+    comment("TITLE=Low Tide Radio"),
+    comment(`METADATA_BLOCK_PICTURE=${Buffer.from(pic).toString("base64")}`),
+    comment("ALBUM=Deep Water"));
+  const tags = await read(oggStream([head, tagsPkt]), "x.opus");
+  assert.equal(tags.title, "Low Tide Radio");
+  assert.equal(tags.album, "Deep Water");
+  assert.equal(tags.picture.data.length, big.length);
+});
+
+test("a wav file's ID3 chunk adds to its INFO list rather than blanking it", async () => {
+  const chunk = (id, s) => {
+    const pad = s.length % 2 ? "\0" : "";
+    return bytes(id, le32(s.length), s, pad);
+  };
+  const info = bytes("INFO", chunk("INAM", "Field Notes"), chunk("IART", "Wind Recorder"));
+  const id3 = id3v23([t23("TALB", "Open Air")]);
+  const file = bytes("RIFF", le32(4 + 8 + info.length + 8 + id3.length), "WAVE",
+    "LIST", le32(info.length), info,
+    "id3 ", le32(id3.length), id3);
+  const tags = await read(file, "x.wav");
+  assert.equal(tags.title, "Field Notes");
+  assert.equal(tags.artist, "Wind Recorder");
+  assert.equal(tags.album, "Open Air");
+});
