@@ -186,3 +186,72 @@ test("artwork is fetched once per album, not once per song", async () => {
     L.readTags = savedTags;
   }
 })
+
+// PeerSky for phones cannot fetch hyper:// from the page, so it gives PeerTunes
+// peerskyHyperWrite, and a publish goes through it: the drive by name, each
+// song, then the playlist. On the desktop the same writes go to hyper://.
+test("publishing writes through the phone's bridge when there is one", async () => {
+  const saved = { fetch: globalThis.fetch, window: globalThis.window, location: globalThis.location, localStorage: globalThis.localStorage };
+  const calls = [];
+  const stored = new Map();
+  globalThis.localStorage = { getItem: (k) => stored.get(k) ?? null, setItem: (k, v) => stored.set(k, String(v)) };
+  globalThis.location = { protocol: "http:", origin: "http://127.0.0.1:47321", href: "http://127.0.0.1:47321/" };
+  globalThis.fetch = async (url, init = {}) => {
+    calls.push([init.method || "GET", url]);
+    if (init.method === "POST" && url.startsWith("/hyper/write")) {
+      return { ok: true, status: 200, headers: { get: (h) => (h === "Location" ? "hyper://drive/" : null) }, text: async () => "hyper://drive/" };
+    }
+    if (init.method === "POST") return { ok: false, status: 405, headers: { get: () => null }, text: async () => "" };
+    return { ok: true, status: 201, headers: { get: () => null }, text: async () => "" };
+  };
+  const lib = Object.create(L.Library.prototype);
+  lib._emitProgress = () => {};
+  lib.trackBlob = async () => new Uint8Array([1, 2, 3]);
+  const tracks = [{ kind: "file", title: "One", artist: "Band", album: "LP", fileName: "01 One.mp3" }];
+  try {
+    globalThis.window = { peerskyHyperWrite: (url) => "/hyper/write?url=" + encodeURIComponent(url) + "&token=t" };
+    const folder = await lib.publishShare("Road Trip", tracks, "k");
+    assert.match(folder, /^hyper:\/\/drive\/road-trip-[0-9a-z]{1,6}\/$/);
+    assert.deepEqual(calls, [
+      ["POST", "/hyper/write?url=" + encodeURIComponent("hyper://localhost/?key=peertunes") + "&token=t"],
+      ["PUT", "/hyper/write?url=" + encodeURIComponent(folder + "01%20One.mp3") + "&token=t"],
+      ["PUT", "/hyper/write?url=" + encodeURIComponent(folder + "playlist.json") + "&token=t"],
+    ]);
+    // Opened again the next time the app starts, so the link keeps working.
+    assert.equal(stored.get("peertunes.published"), "1");
+
+    // On the desktop: straight to hyper://.
+    calls.length = 0;
+    globalThis.window = {};
+    globalThis.fetch = async (url, init = {}) => {
+      calls.push([init.method || "GET", url]);
+      if (init.method === "POST") return { ok: true, status: 200, headers: { get: () => null }, text: async () => "hyper://desk/" };
+      return { ok: true, status: 201, headers: { get: () => null }, text: async () => "" };
+    };
+    const desk = await lib.publishShare("Road Trip", tracks, "k");
+    assert.deepEqual(calls.map(([method, url]) => [method, url.split("?")[0]]), [
+      ["POST", "hyper://localhost/"],
+      ["PUT", desk + "01%20One.mp3"],
+      ["PUT", desk + "playlist.json"],
+    ]);
+  } finally {
+    Object.assign(globalThis, saved);
+  }
+});
+
+test("outside PeerSky nothing takes the writes, and publishing says so", async () => {
+  const saved = { fetch: globalThis.fetch, window: globalThis.window, location: globalThis.location };
+  globalThis.window = {};
+  globalThis.location = { protocol: "https:", origin: "https://example.com", href: "https://example.com/" };
+  globalThis.fetch = async (url) => {
+    if (String(url).startsWith("hyper:")) throw new TypeError("Failed to fetch");
+    return { ok: false, status: 405, headers: { get: () => null }, text: async () => "" };
+  };
+  try {
+    const lib = Object.create(L.Library.prototype);
+    lib._emitProgress = () => {};
+    await assert.rejects(lib.publishShare("Mix", [], "k"), (err) => err.code === "NOWRITE");
+  } finally {
+    Object.assign(globalThis, saved);
+  }
+});

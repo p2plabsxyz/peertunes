@@ -195,6 +195,18 @@
     return out || "playlist";
   }
 
+  // whether this library has published a playlist, so its drive is opened
+  // again when the app starts
+  const PUBLISHED_KEY = "peertunes.published";
+
+  function published() {
+    try { return localStorage.getItem(PUBLISHED_KEY) === "1"; } catch { return false; }
+  }
+
+  function markPublished() {
+    try { localStorage.setItem(PUBLISHED_KEY, "1"); } catch {}
+  }
+
   function sanitizeFileName(s) {
     return (s || "track").replace(/[\/\\?%*:|"<>\u0000-\u001f]/g, "-").trim().slice(0, 80) || "track";
   }
@@ -239,6 +251,9 @@
       for (const p of pls || []) this.playlists.set(p.id, p);
       this.sources = (await idb(this.db, "sources", "readonly", (s) => s.getAll())) || [];
       this._invalidate();
+      // a drive published from here is shared only while it is open, so it
+      // is opened again with the app, for the links already given out
+      if (published()) this._publishDrive().catch(() => {});
     }
 
     _invalidate() {
@@ -619,20 +634,33 @@
       return { name: share.name, tracks: tracks.filter(Boolean) };
     }
 
+    // writes to a hyper:// address go there directly in PeerSky for desktop,
+    // and through the app's bridge in PeerSky for phones, whose web view
+    // cannot fetch hyper:// itself
+    _hyperWrite(url, init) {
+      const bridge = typeof window !== "undefined" && typeof window.peerskyHyperWrite === "function" ? window.peerskyHyperWrite : null;
+      return fetch(bridge ? bridge(url) : url, init);
+    }
+
+    // the drive playlists are published to, made the first time it is asked for
+    async _publishDrive() {
+      const endpoints = ["hyper://localhost/?key=peertunes"];
+      if (/^https?:$/.test(location.protocol)) endpoints.push(location.origin + "/?key=peertunes");
+      for (const ep of endpoints) {
+        try {
+          const res = ep.startsWith("hyper:") ? await this._hyperWrite(ep, { method: "POST" }) : await fetch(ep, { method: "POST" });
+          if (!res.ok) continue;
+          const driveUrl = ((res.headers.get("Location") || "") || (await res.text())).trim();
+          if (driveUrl) return driveUrl;
+        } catch {}
+      }
+      return null;
+    }
+
     // publish a set of tracks to a hyper:// drive so the share link works
     // anywhere. Local files get copied in, url tracks are listed as-is.
     async publishShare(name, tracks, key = "library") {
-      const endpoints = ["hyper://localhost/?key=peertunes"];
-      if (/^https?:$/.test(location.protocol)) endpoints.push(location.origin + "/?key=peertunes");
-      let driveUrl = null;
-      for (const ep of endpoints) {
-        try {
-          const res = await fetch(ep, { method: "POST" });
-          if (!res.ok) continue;
-          driveUrl = ((res.headers.get("Location") || "") || (await res.text())).trim();
-          if (driveUrl) break;
-        } catch {}
-      }
+      let driveUrl = await this._publishDrive();
       if (!driveUrl) {
         const err = new Error("no hyper write access");
         err.code = "NOWRITE";
@@ -651,20 +679,21 @@
           const blob = await this.trackBlob(t);
           const base = t.fileName || `${String(i + 1).padStart(2, "0")} - ${t.title}${extOf(t.fileName) || ".mp3"}`;
           const fname = sanitizeFileName(base);
-          const res = await fetch(folder + encodeURIComponent(fname), { method: "PUT", body: blob });
+          const res = await this._hyperWrite(folder + encodeURIComponent(fname), { method: "PUT", body: blob });
           if (!res.ok) throw new Error(`upload failed (${res.status})`);
           entries.push({ file: fname, title: t.title, artist: t.artist, album: t.album });
         }
         this._emitProgress(i + 1, total, t.title);
       }
       const manifest = buildManifest(name, entries);
-      const res = await fetch(folder + MANIFEST_NAME, {
+      const res = await this._hyperWrite(folder + MANIFEST_NAME, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(manifest, null, 2),
       });
       if (!res.ok) throw new Error(`manifest upload failed (${res.status})`);
       this._emitProgress(total, total, MANIFEST_NAME);
+      markPublished();
       return folder;
     }
 
