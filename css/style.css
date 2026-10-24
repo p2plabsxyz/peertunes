@@ -230,6 +230,8 @@ body {
 .sb-ico svg { width: 100%; fill: #3c4046; }
 .sb-bt { display: inline-flex; width: calc(var(--u) * 6); min-width: 9px; color: #2b6cd4; }
 .sb-bt svg { width: 100%; }
+.sb-shuffle { display: inline-flex; width: calc(var(--u) * 6.4); min-width: 10px; }
+.sb-shuffle svg { width: 100%; fill: #3c4046; }
 
 /* ---------- pages ---------- */
 
