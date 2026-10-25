@@ -54,6 +54,22 @@
     return Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
   }
 
+  // Words in another language can run longer than the English the screen was
+  // drawn for. A line that does not fit shrinks, never below FIT_FLOOR of its
+  // size, and only then is cut short with an ellipsis. All are measured
+  // before any is changed, so the page is laid out once.
+  const FIT_FLOOR = 0.78;
+  function fitLines(els) {
+    const lines = Array.from(els);
+    for (const el of lines) el.style.fontSize = "";
+    const over = lines
+      .filter((el) => el.isConnected && el.scrollWidth > el.clientWidth + 1)
+      .map((el) => [el, el.clientWidth / el.scrollWidth, parseFloat(getComputedStyle(el).fontSize)]);
+    for (const [el, ratio, size] of over) {
+      el.style.fontSize = `${(size * Math.max(FIT_FLOOR, ratio - 0.01)).toFixed(2)}px`;
+    }
+  }
+
   // clipboard api needs a secure context, the textarea trick works everywhere
   async function copyText(s) {
     try {
@@ -152,6 +168,8 @@
       screen.render(page, this);
       this.body.appendChild(page);
       this.sbTitle.textContent = screen.title || "PeerTunes";
+      this._fitTitle();
+      fitLines(page.querySelectorAll(".row .lbl, .np-artist, .np-album"));
       this._saveRoute();
       if (animate && oldEl && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
         page.classList.add(dir > 0 ? "anim-in-right" : "anim-in-left");
@@ -159,6 +177,18 @@
         setTimeout(() => stale.forEach((el) => el.remove()), 210);
       } else {
         stale.forEach((el) => el.remove());
+      }
+    }
+
+    // A title too long for its place even when shrunk takes the clock's too,
+    // on that screen only.
+    _fitTitle() {
+      const bar = this.sbTitle.closest ? this.sbTitle.closest(".statusbar") : null;
+      if (bar) bar.classList.remove("long");
+      fitLines([this.sbTitle]);
+      if (bar && this.sbTitle.scrollWidth > this.sbTitle.clientWidth + 1) {
+        bar.classList.add("long");
+        fitLines([this.sbTitle]);
       }
     }
 
@@ -384,6 +414,9 @@
             knob.style.height = u(kh);
             knob.style.top = u((this.first / Math.max(1, n - VISIBLE)) * (89.5 - kh));
           }
+          // With the rail in place, which narrows the rows. The first paint is
+          // before the page is on screen, which fits it then.
+          if (this.inner.isConnected) fitLines(this.inner.querySelectorAll(".lbl"));
         },
         _row(r, i) {
           const row = h("div", "row" + (i === this.sel ? " sel" : "") + (r.dim ? " dim" : ""));
@@ -1265,6 +1298,7 @@
           this.els.title.textContent = track.title;
           this.els.artist.textContent = track.artist || t("Unknown Artist");
           this.els.album.textContent = track.album || "";
+          fitLines([this.els.artist, this.els.album]);
           this.paintBadges();
           const cover = await ui.lib.trackCover(track).catch(() => null);
           this.els.art.src = cover || DEFAULT_COVER;
@@ -1974,6 +2008,7 @@
   }
 
   PT.barFraction = barFraction;
+  PT.fitLines = fitLines;
   PT.keepView = keepView;
   PT.UI = UI;
   PT.DEFAULT_COVER = DEFAULT_COVER;

@@ -212,6 +212,9 @@ body {
   letter-spacing: 0.02em;
 }
 .sb-left { display: flex; align-items: center; gap: calc(var(--w) * 1.4); min-width: 0; }
+/* A title that does not fit even shrunk (js/ui.js) takes the clock's place. */
+.statusbar.long { grid-template-columns: minmax(0, 1fr) auto; }
+.statusbar.long .sb-clock { display: none; }
 .sb-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sb-clock {
   justify-self: center;

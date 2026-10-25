@@ -158,3 +158,58 @@ test("the welcome cards keep their bold words and nothing else as HTML", () => {
   assert.match(welcome, /\.replace\(\/&lt;\(\\\/\?\)b&gt;\/g, "<\$1b>"\)/);
   assert.match(welcome, /stepEl\.querySelector\("h1"\)\.textContent = tKey\(step\.title\);/);
 });
+
+// German, French and Dutch ran past the half-width main menu and the title,
+// which fits about ten letters beside the clock ("Musik hinzufü…"). A line
+// that does not fit shrinks first, never below 78%, and a title that still
+// does not fit takes the clock's place on that screen.
+test("a line too long shrinks before it is cut, and a long title takes the clock's place", () => {
+  const PT = loadPT({}, ["../js/i18n.js", "../assets/icons.js", "../js/library.js", "../js/player.js", "../js/ui.js"]);
+  global.getComputedStyle = () => ({ fontSize: "20px" });
+  const line = (scrollWidth, clientWidth) => ({ isConnected: true, scrollWidth, clientWidth, style: { fontSize: "0.5em" } });
+  const fits = line(80, 100);
+  const over = line(110, 100);
+  const far = line(300, 100);
+  const away = Object.assign(line(300, 100), { isConnected: false });
+  PT.fitLines([fits, over, far, away]);
+  assert.equal(fits.style.fontSize, "", "a line that fits is left at its size");
+  assert.equal(over.style.fontSize, `${(20 * (100 / 110 - 0.01)).toFixed(2)}px`);
+  assert.equal(far.style.fontSize, "15.60px");
+  assert.equal(away.style.fontSize, "", "a line not on screen cannot be measured");
+
+  const classes = new Set();
+  const bar = { classList: { add: (name) => classes.add(name), remove: (name) => classes.delete(name) } };
+  const title = (text) => ({
+    isConnected: true,
+    style: { fontSize: "" },
+    closest: () => bar,
+    // The clock's place gives the title room for about 30 letters.
+    get clientWidth() { return classes.has("long") ? 300 : 100; },
+    get scrollWidth() { return text.length * 10; },
+  });
+  const ui = { sbTitle: title("Musik") };
+  PT.UI.prototype._fitTitle.call(ui);
+  assert.equal(classes.has("long"), false);
+  ui.sbTitle = title("Zur Playlist hinzufügen");
+  PT.UI.prototype._fitTitle.call(ui);
+  assert.equal(classes.has("long"), true);
+  assert.equal(ui.sbTitle.style.fontSize, "");
+  ui.sbTitle = title("Alben");
+  PT.UI.prototype._fitTitle.call(ui);
+  assert.equal(classes.has("long"), false, "the clock comes back on the next screen");
+
+  const css = read("css/style.css");
+  assert.match(css, /\.statusbar\.long \{ grid-template-columns: minmax\(0, 1fr\) auto; \}/);
+  assert.match(css, /\.statusbar\.long \.sb-clock \{ display: none; \}/);
+  // Unknown Artist in German is twice as long as in English.
+  assert.match(read("js/ui.js"), /fitLines\(page\.querySelectorAll\("\.row \.lbl, \.np-artist, \.np-album"\)\);/);
+  delete global.getComputedStyle;
+});
+
+// The arrow at the end of a row, ›, is a mirrored character: text read right
+// to left draws it as ‹ by itself. Turning it as well pointed it back.
+test("the row arrow is left for right-to-left text to turn", () => {
+  const css = read("css/style.css");
+  assert.doesNotMatch(css, /\.chev[^{]*\{[^}]*scaleX\(-1\)/);
+  assert.match(read("js/ui.js"), /h\("span", "chev", "›"\)/);
+});
