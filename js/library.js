@@ -5,6 +5,16 @@
 (function (PT) {
   "use strict";
 
+  // Names for what has none, in the language picked. Songs are often called
+  // t here, so the words go through msg and tKey.
+  const { msg, tKey, language } = PT.i18n || require("./i18n.js").i18n;
+  const SHARED_PLAYLIST = msg("Shared Playlist");
+  const SHARED_SONG = msg("Shared Song");
+  const NEW_PLAYLIST = msg("New Playlist");
+  const UNKNOWN_ALBUM = msg("Unknown Album");
+  const UNKNOWN_ARTIST = msg("Unknown Artist");
+  const UNKNOWN_GENRE = msg("Unknown Genre");
+
   const DB_NAME = "peertunes";
   const DB_VER = 2; // v2 adds the playlists store
   const MANIFEST_NAME = "playlist.json";
@@ -42,7 +52,7 @@
     return {
       app: "peertunes",
       version: 1,
-      name: (name || "").trim() || "Shared Playlist",
+      name: (name || "").trim() || tKey(SHARED_PLAYLIST),
       files: entries.map((e) => ({
         file: e.file,
         title: e.title || "",
@@ -64,7 +74,7 @@
         album: typeof f.album === "string" ? f.album : "",
       }));
     if (!files.length) return null;
-    const name = typeof data.name === "string" && data.name.trim() ? data.name.trim().slice(0, 80) : "Shared Playlist";
+    const name = typeof data.name === "string" && data.name.trim() ? data.name.trim().slice(0, 80) : tKey(SHARED_PLAYLIST);
     return { name, files };
   }
 
@@ -635,7 +645,7 @@
     async resolveShared(inputUrl) {
       const url = (inputUrl || "").trim();
       if (PT.isAudioName(url.split("?")[0])) {
-        return { url, name: decodeSafe(url.split("/").pop() || "Shared Song"), files: [url] };
+        return { url, name: decodeSafe(url.split("/").pop() || tKey(SHARED_SONG)), files: [url] };
       }
       const base = url.endsWith("/") ? url : url + "/";
       try {
@@ -650,7 +660,7 @@
       } catch {}
       const files = await this._collectUrls(url);
       const segs = base.split("/").filter(Boolean);
-      const name = decodeSafe(segs[segs.length - 1] || "") || "Shared Playlist";
+      const name = decodeSafe(segs[segs.length - 1] || "") || tKey(SHARED_PLAYLIST);
       return { url, name, files };
     }
 
@@ -991,7 +1001,7 @@
       const id = "p" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
       const pl = {
         id,
-        name: (name || "").trim().slice(0, 80) || "New Playlist",
+        name: (name || "").trim().slice(0, 80) || tKey(NEW_PLAYLIST),
         trackIds: [],
         created: Date.now(),
         sourceUrl: opts.sourceUrl || null,
@@ -1116,38 +1126,52 @@
 
     // ---- grouping ----
 
+    // Albums, artists and genres. What has no name of its own is keyed by
+    // the English one, so a page saved in one language opens in another,
+    // and shown in the language picked, which builds them again.
     _group() {
-      if (this._groups) return this._groups;
+      const lang = language();
+      if (this._groups && this._groups.language === lang) return this._groups;
+      const unknownAlbum = tKey(UNKNOWN_ALBUM);
+      const unknownArtist = tKey(UNKNOWN_ARTIST);
+      const unknownGenre = tKey(UNKNOWN_GENRE);
       const albums = new Map();
       const artists = new Map();
       const genres = new Map();
       for (const t of this.tracks.values()) {
-        const albumName = t.album || "Unknown Album";
-        const albumArtist = t.albumArtist || t.artist || "Unknown Artist";
+        const albumName = t.album || UNKNOWN_ALBUM;
+        const albumArtist = t.albumArtist || t.artist || UNKNOWN_ARTIST;
         const aKey = norm(albumArtist) + "|" + norm(albumName);
         if (!albums.has(aKey)) {
-          albums.set(aKey, { key: aKey, name: albumName, artist: albumArtist, year: t.year, coverId: null, tracks: [] });
+          albums.set(aKey, {
+            key: aKey,
+            name: t.album || unknownAlbum,
+            artist: t.albumArtist || t.artist || unknownArtist,
+            year: t.year,
+            coverId: null,
+            tracks: [],
+          });
         }
         const album = albums.get(aKey);
         album.tracks.push(t);
         if (!album.coverId && t.coverId) album.coverId = t.coverId;
         if (t.year && (!album.year || t.year < album.year)) album.year = t.year;
 
-        const artistName = t.artist || t.albumArtist || "Unknown Artist";
+        const artistName = t.artist || t.albumArtist || UNKNOWN_ARTIST;
         const arKey = norm(artistName);
-        if (!artists.has(arKey)) artists.set(arKey, { key: arKey, name: artistName, albums: new Set(), tracks: [] });
+        if (!artists.has(arKey)) artists.set(arKey, { key: arKey, name: t.artist || t.albumArtist || unknownArtist, albums: new Set(), tracks: [] });
         artists.get(arKey).albums.add(aKey);
         artists.get(arKey).tracks.push(t);
 
-        const genreName = t.genre || "Unknown Genre";
+        const genreName = t.genre || UNKNOWN_GENRE;
         const gKey = norm(genreName);
-        if (!genres.has(gKey)) genres.set(gKey, { key: gKey, name: genreName, tracks: [] });
+        if (!genres.has(gKey)) genres.set(gKey, { key: gKey, name: t.genre || unknownGenre, tracks: [] });
         genres.get(gKey).tracks.push(t);
       }
       for (const album of albums.values()) {
         album.tracks.sort((a, b) => (a.disc || 1) - (b.disc || 1) || (a.track || 999) - (b.track || 999) || a.title.localeCompare(b.title));
       }
-      this._groups = { albums, artists, genres };
+      this._groups = { albums, artists, genres, language: lang };
       return this._groups;
     }
 
