@@ -32,6 +32,7 @@ jobs:
 
       - name: Syntax check
         run: |
+          node --check js/i18n.js
           node --check js/metadata.js
           node --check js/library.js
           node --check js/player.js

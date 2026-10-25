@@ -5,6 +5,10 @@
 
   const PT = window.PT;
   const $ = (id) => document.getElementById(id);
+  const { t, tp } = PT.i18n;
+
+  // PeerSky may set its language after js/i18n.js ran and before this did.
+  if (window.peerskyTunes) PT.i18n.setup(window.peerskyTunes);
 
   let stored = {};
   try { stored = JSON.parse(localStorage.getItem("peertunes-settings") || "{}"); } catch {}
@@ -53,6 +57,28 @@
   document.querySelector(".wz-prev").innerHTML = PT.icons.prev;
   document.querySelector(".wz-next").innerHTML = PT.icons.next;
   document.querySelector(".wz-play").innerHTML = PT.icons.playpause;
+
+  // ---------- language ----------
+
+  // The language for fonts and screen readers, the way the screen reads
+  // (right to left for some, while the wheel stays put), and the few words
+  // written in index.html.
+  function applyLanguage() {
+    document.documentElement.lang = PT.i18n.language();
+    $("screen").dir = PT.i18n.direction();
+    $("wheel").setAttribute("aria-label", t("Wheel"));
+    $("wheel-center").setAttribute("aria-label", t("Select"));
+    $("drop-hint").firstElementChild.textContent = t("Drop music to sync");
+  }
+  applyLanguage();
+
+  // PeerSky on a phone hands over another language while the page is open.
+  // Every page is drawn again where it is, and the song plays on.
+  PT.setLanguage = (config) => {
+    PT.i18n.setup(config);
+    applyLanguage();
+    ui.retranslate();
+  };
 
   // ---------- scale units: --u/--w are 1% of the element's height/width ----------
 
@@ -284,11 +310,11 @@
       return;
     }
     ui.dialog({
-      msg: "Someone shared a playlist",
-      sub: urls[0] + (urls.length > 1 ? `  (+${urls.length - 1} more)` : ""),
+      msg: t("Someone shared a playlist"),
+      sub: urls.length > 1 ? `${urls[0]}  ${tp({ one: "(+{count} more)", other: "(+{count} more)" }, urls.length - 1)}` : urls[0],
       buttons: [
         {
-          label: "Import", action: async () => {
+          label: t("Import"), action: async () => {
             let first = null;
             await ui.runImport(async () => {
               let added = 0, found = 0;
@@ -301,28 +327,28 @@
                 } catch (err) { console.warn(err); }
               }
               return { added, found };
-            }, "Syncing");
+            }, t("Syncing"));
             if (first) openPlaylist(first);
           },
         },
         {
-          label: "Play Only", action: async () => {
+          label: t("Play Only"), action: async () => {
             try {
               const tracks = [];
               await ui.runTask(async () => {
                 for (const u of urls) {
                   try { tracks.push(...(await library.loadRemote(u)).tracks); } catch (err) { console.warn(err); }
                 }
-              }, "Loading");
+              }, t("Loading"));
               if (!tracks.length) throw new Error("empty");
               player.playContext(tracks, 0);
               ui.openNowPlaying();
             } catch {
-              ui.dialog({ msg: "Could not load playlist", sub: "Check the link and try again.", buttons: [{ label: "OK" }] });
+              ui.dialog({ msg: t("Could not load playlist"), sub: t("Check the link and try again."), buttons: [{ label: t("OK") }] });
             }
           },
         },
-        { label: "Cancel", action: () => ui.restoreRoutes(savedRoutes) },
+        { label: t("Cancel"), action: () => ui.restoreRoutes(savedRoutes) },
       ],
       defaultSel: 1,
     });

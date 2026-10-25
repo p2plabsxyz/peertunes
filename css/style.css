@@ -212,6 +212,9 @@ body {
   letter-spacing: 0.02em;
 }
 .sb-left { display: flex; align-items: center; gap: calc(var(--w) * 1.4); min-width: 0; }
+/* A title that does not fit even shrunk (js/ui.js) takes the clock's place. */
+.statusbar.long { grid-template-columns: minmax(0, 1fr) auto; }
+.statusbar.long .sb-clock { display: none; }
 .sb-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sb-clock {
   justify-self: center;
@@ -251,12 +254,24 @@ body {
 @keyframes in-left { from { transform: translateX(-100%); } to { transform: translateX(0); } }
 @keyframes out-left { from { transform: translateX(0); } to { transform: translateX(-100%); } }
 @keyframes out-right { from { transform: translateX(0); } to { transform: translateX(100%); } }
+/* A language read right to left turns the screen around (js/main.js sets its
+   dir), so a page opened slides in from the left. */
+.screen[dir="rtl"] .page.anim-in-right { animation-name: in-left; }
+.screen[dir="rtl"] .page.anim-in-left { animation-name: in-right; }
+.screen[dir="rtl"] .page.anim-out-left { animation-name: out-right; }
+.screen[dir="rtl"] .page.anim-out-right { animation-name: out-left; }
+/* Names of songs, albums and artists are in whatever language they were
+   written in, and so is the clock when the phone's language is another one.
+   Each reads its own way, lined up with the screen's own words. */
+.sb-title, .sb-clock, .row .lbl, .row .sub, .cf-cap div, .np-meta > div, .keep-song, .dlg .dmsg, .dlg .dsub { unicode-bidi: plaintext; }
+.row .lblwrap, .np-meta > div { text-align: left; }
+.screen[dir="rtl"] .row .lblwrap, .screen[dir="rtl"] .np-meta > div { text-align: right; }
 
 /* ---------- lists ---------- */
 
 .list { position: absolute; inset: 0; overflow: hidden; }
 .list-inner { position: absolute; left: 0; right: 0; top: 0; }
-.list.has-rail .list-inner { right: calc(var(--w) * 3.6); }
+.list.has-rail .list-inner { inset-inline-end: calc(var(--w) * 3.6); }
 
 .row {
   height: calc(var(--u) * 14.9);
@@ -279,7 +294,7 @@ body {
   margin-top: calc(var(--u) * 0.5);
 }
 .row .value {
-  margin-left: auto;
+  margin-inline-start: auto;
   color: var(--ink-dim);
   font-weight: 500;
   font-size: calc(var(--u) * 5.6);
@@ -296,7 +311,7 @@ body {
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.22);
   background: #c8ccd2;
 }
-.row .tnum { color: var(--ink-dim); font-weight: 600; min-width: calc(var(--w) * 3.4); text-align: right; }
+.row .tnum { color: var(--ink-dim); font-weight: 600; min-width: calc(var(--w) * 3.4); text-align: end; }
 .row.dim { color: var(--ink-dim); }
 /* a small mark at the end of a row: Shuffle, or whether a kept song is here */
 .row .glyph { display: inline-flex; flex: 0 0 auto; width: calc(var(--u) * 6); }
@@ -316,10 +331,10 @@ body {
 /* scroll rail */
 .rail {
   position: absolute;
-  top: 0; bottom: 0; right: 0;
+  top: 0; bottom: 0; inset-inline-end: 0;
   width: calc(var(--w) * 3.6);
   background: linear-gradient(90deg, #d7dbe1, #c5c9d0);
-  border-left: 1px solid #a9adb5;
+  border-inline-start: 1px solid #a9adb5;
   display: none;
 }
 .list.has-rail .rail { display: block; }
@@ -339,7 +354,7 @@ body {
 .artpane {
   position: relative;
   overflow: hidden;
-  border-left: 1px solid #9da1a8;
+  border-inline-start: 1px solid #9da1a8;
   background: linear-gradient(165deg, #262b33, #0e1014 70%);
 }
 .artpane .float-cover {
@@ -446,14 +461,15 @@ body {
 }
 .np-album { color: var(--ink-dim); }
 .np-idx { margin-top: auto; font-size: calc(var(--u) * 4.7); color: var(--ink-dim); font-weight: 600; padding-bottom: calc(var(--u) * 1); }
-.np-badges { display: inline-flex; gap: calc(var(--w) * 1.6); margin-left: calc(var(--w) * 1.6); }
+.np-badges { display: inline-flex; gap: calc(var(--w) * 1.6); margin-inline-start: calc(var(--w) * 1.6); }
 .np-badges svg { width: calc(var(--u) * 5.4); fill: #3b7fd6; vertical-align: middle; }
 /* Shuffle is always shown, grey while off. Tap it to switch. The padding
    gives a finger more to hit than the mark itself. */
 .np-shuffle {
   display: inline-flex;
   vertical-align: middle;
-  margin: calc(var(--u) * -1.6) 0 calc(var(--u) * -1.6) calc(var(--w) * 0.6);
+  margin-block: calc(var(--u) * -1.6);
+  margin-inline: calc(var(--w) * 0.6) 0;
   padding: calc(var(--u) * 1.6);
   border: 0;
   border-radius: calc(var(--u) * 1.8);
@@ -466,6 +482,9 @@ body {
 .np-shuffle:active { background: rgba(0, 0, 0, 0.07); }
 
 .np-bottom { margin-top: calc(var(--u) * 2.2); position: relative; }
+/* The song's bar, its times and the volume run left to right in every
+   language, the way the wheel scrubs them. */
+.np-progress, .np-times, .np-vol { direction: ltr; }
 .np-progress {
   touch-action: none;
   cursor: pointer;
@@ -594,6 +613,7 @@ body {
   box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.16);
   outline: none;
 }
+.urlpage input[type="url"] { direction: ltr; }
 .urlpage input:focus { border-color: var(--sel-b); box-shadow: 0 0 0 2px rgba(23, 95, 212, 0.25), inset 0 1px 2px rgba(0, 0, 0, 0.16); }
 .urlpage .hint { font-size: calc(var(--u) * 4.6); color: var(--ink-dim); line-height: 1.5; }
 
@@ -692,10 +712,10 @@ body {
   font-weight: 700;
   color: #2261c4;
 }
-.dlg .dbtn + .dbtn { border-left: 1px solid #b3b7be; }
+.dlg .dbtn + .dbtn { border-inline-start: 1px solid #b3b7be; }
 .dlg .dbtn.sel { background: linear-gradient(180deg, var(--sel-a), var(--sel-b)); color: #fff; }
 .dlg .dbtns.stack { flex-direction: column; }
-.dlg .dbtns.stack .dbtn + .dbtn { border-left: none; border-top: 1px solid #b3b7be; }
+.dlg .dbtns.stack .dbtn + .dbtn { border-inline-start: none; border-top: 1px solid #b3b7be; }
 
 /* ---------- splash ---------- */
 
@@ -891,12 +911,12 @@ body.dropping .drop-hint { display: grid; }
 .wl-card b { color: var(--ink); }
 .wl-card .wl-lead { font-size: 16px; color: var(--ink); font-weight: 600; }
 
-.wl-moves { list-style: none; text-align: left; margin: 4px auto 6px; max-width: 290px; }
-.wl-moves li { position: relative; padding: 5px 0 5px 18px; color: var(--ink-dim); }
+.wl-moves { list-style: none; text-align: start; margin: 4px auto 6px; max-width: 290px; }
+.wl-moves li { position: relative; padding-block: 5px; padding-inline: 18px 0; color: var(--ink-dim); }
 .wl-moves li::before {
   content: "";
   position: absolute;
-  left: 2px;
+  inset-inline-start: 2px;
   top: 12px;
   width: 7px;
   height: 7px;

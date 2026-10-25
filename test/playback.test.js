@@ -171,7 +171,7 @@ test("the Haptics setting only shows where something can buzz", () => {
   const fs = require("node:fs");
   const ui = fs.readFileSync(require.resolve("../js/ui.js"), "utf8");
   const main = fs.readFileSync(require.resolve("../js/main.js"), "utf8");
-  assert.match(ui, /\.\.\.\(PT\.Wheel\.canHaptic\(\) \? \[\{\s+label: "Haptics"/);
+  assert.match(ui, /\.\.\.\(PT\.Wheel\.canHaptic\(\) \? \[\{\s+label: t\("Haptics"\)/);
   assert.match(ui, /s\.haptics = !s\.haptics; ui\.wheel\.haptics = s\.haptics; commit\(\);/);
   assert.match(main, /\{ clicker: true, haptics: true,/);
   assert.match(main, /wheel\.haptics = settings\.haptics;/);
@@ -207,7 +207,7 @@ test("an import says how many were new and how many were already here", () => {
   return (async () => {
     await runImport.call(ui, async () => ({ added: 1, found: 18 }));
     assert.equal(messages.at(-1).msg, "Added 1 song");
-    assert.equal(messages.at(-1).sub, "17 of 18 were already in your library");
+    assert.equal(messages.at(-1).sub, "17 of 18 were already in your library.");
 
     await runImport.call(ui, async () => ({ added: 18, found: 18 }));
     assert.equal(messages.at(-1).msg, "Added 18 songs");
@@ -216,14 +216,18 @@ test("an import says how many were new and how many were already here", () => {
     // Nothing new, but the source is there: not the same as finding nothing.
     await runImport.call(ui, async () => ({ added: 0, found: 18 }));
     assert.equal(messages.at(-1).msg, "Already up to date");
-    assert.equal(messages.at(-1).sub, "18 of 18 were already in your library");
+    assert.equal(messages.at(-1).sub, "18 of 18 were already in your library.");
 
     await runImport.call(ui, async () => ({ added: 0, found: 0 }));
     assert.equal(messages.at(-1).msg, "No new songs found");
 
+    await runImport.call(ui, async () => ({ added: 0, found: 1 }));
+    assert.equal(messages.at(-1).sub, "1 of 1 was already in your library.");
+
     // A folder that never answered is said out loud, not left to look empty.
+    // Each note is a sentence of its own, on its own line.
     await runImport.call(ui, async () => ({ added: 3, found: 5, partial: true }));
-    assert.equal(messages.at(-1).sub, "2 of 5 were already in your library. Some folders did not answer yet, so Rescan Sources later");
+    assert.equal(messages.at(-1).sub, "2 of 5 were already in your library.\nSome folders did not answer yet, so Rescan Sources later.");
   })();
 });
 
@@ -236,6 +240,8 @@ function loadRunImport() {
   const start = src.indexOf("    async runImport(fn, label");
   const end = src.indexOf("\n    }", src.indexOf("return result.added;")) + "\n    }".length;
   const body = src.slice(start, end).replace(/^\s*async runImport\(/, "async function runImport(");
+  // It finds its words where ui.js takes them from, in English here.
+  const { t, tp, formatNumber } = require("../js/i18n.js").i18n;
   // eslint-disable-next-line no-new-func
-  return { runImport: new Function(`return (${body})`)() };
+  return { runImport: new Function("t", "tp", "formatNumber", `return (${body})`)(t, tp, formatNumber) };
 }

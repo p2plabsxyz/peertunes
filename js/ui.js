@@ -3,6 +3,10 @@
 (function (PT) {
   "use strict";
 
+  // Words in the language picked (js/i18n.js). No song is called t in this
+  // file, so t is always the words.
+  const { t, tp, formatNumber } = PT.i18n || require("./i18n.js").i18n;
+
   const ROW_H = 14.9; // in --u units (1% of screen height)
   const VISIBLE = 6;
   // How often a kept playlist on screen asks how its songs are doing, and how
@@ -48,6 +52,22 @@
   function barFraction(clientX, rect) {
     if (!rect || !rect.width) return 0;
     return Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+  }
+
+  // Words in another language can run longer than the English the screen was
+  // drawn for. A line that does not fit shrinks, never below FIT_FLOOR of its
+  // size, and only then is cut short with an ellipsis. All are measured
+  // before any is changed, so the page is laid out once.
+  const FIT_FLOOR = 0.78;
+  function fitLines(els) {
+    const lines = Array.from(els);
+    for (const el of lines) el.style.fontSize = "";
+    const over = lines
+      .filter((el) => el.isConnected && el.scrollWidth > el.clientWidth + 1)
+      .map((el) => [el, el.clientWidth / el.scrollWidth, parseFloat(getComputedStyle(el).fontSize)]);
+    for (const [el, ratio, size] of over) {
+      el.style.fontSize = `${(size * Math.max(FIT_FLOOR, ratio - 0.01)).toFixed(2)}px`;
+    }
   }
 
   // clipboard api needs a secure context, the textarea trick works everywhere
@@ -102,11 +122,11 @@
         // A song of a kept playlist that has not reached the device yet.
         const away = !!track && Array.from(this._kept.values()).some((s) => s.missing.has(track.id));
         this.dialog({
-          msg: "Cannot play this song",
-          sub: away ? `${title}\nIt is not on this device yet.` : title,
+          msg: t("Cannot play this song"),
+          sub: away ? `${title}\n${t("It is not on this device yet.")}` : title,
           buttons: [
-            { label: "Skip", action: () => this.player.next() },
-            { label: "OK" },
+            { label: t("Skip"), action: () => this.player.next() },
+            { label: t("OK") },
           ],
         });
       });
@@ -148,6 +168,8 @@
       screen.render(page, this);
       this.body.appendChild(page);
       this.sbTitle.textContent = screen.title || "PeerTunes";
+      this._fitTitle();
+      fitLines(page.querySelectorAll(".row .lbl, .np-artist, .np-album"));
       this._saveRoute();
       if (animate && oldEl && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
         page.classList.add(dir > 0 ? "anim-in-right" : "anim-in-left");
@@ -155,6 +177,18 @@
         setTimeout(() => stale.forEach((el) => el.remove()), 210);
       } else {
         stale.forEach((el) => el.remove());
+      }
+    }
+
+    // A title too long for its place even when shrunk takes the clock's too,
+    // on that screen only.
+    _fitTitle() {
+      const bar = this.sbTitle.closest ? this.sbTitle.closest(".statusbar") : null;
+      if (bar) bar.classList.remove("long");
+      fitLines([this.sbTitle]);
+      if (bar && this.sbTitle.scrollWidth > this.sbTitle.clientWidth + 1) {
+        bar.classList.add("long");
+        fitLines([this.sbTitle]);
       }
     }
 
@@ -168,15 +202,19 @@
 
     // each screen carries a small `route` like ["album", key]; we persist the
     // whole stack (plus the highlighted row) and replay it on the next boot.
+    _routes() {
+      const out = [];
+      for (const s of this.stack) {
+        if (!s.route) { if (s.name === "root") continue; else break; }
+        const pos = typeof s.sel === "number" ? s.sel : (typeof s.idx === "number" ? s.idx : 0);
+        out.push({ r: s.route, pos });
+      }
+      return out;
+    }
+
     _saveRoute() {
       try {
-        const out = [];
-        for (const s of this.stack) {
-          if (!s.route) { if (s.name === "root") continue; else break; }
-          const pos = typeof s.sel === "number" ? s.sel : (typeof s.idx === "number" ? s.idx : 0);
-          out.push({ r: s.route, pos });
-        }
-        localStorage.setItem("peertunes-route", JSON.stringify(out));
+        localStorage.setItem("peertunes-route", JSON.stringify(this._routes()));
       } catch {}
     }
 
@@ -201,6 +239,15 @@
         this.stack.push(screen);
       }
       this._renderTop(false);
+    }
+
+    // Another language picked while the page is open: every page is made
+    // again from where it is, the way a refresh puts them back, so the titles
+    // change too. Whatever plays keeps playing.
+    retranslate() {
+      const routes = this._routes();
+      this.replaceAll(this.rootScreen());
+      this.restoreRoutes(routes);
     }
 
     _screenFromRoute(r) {
@@ -256,7 +303,7 @@
 
     dialog(opts) {
       this._closeDialog();
-      const buttons = opts.buttons || [{ label: "OK" }];
+      const buttons = opts.buttons || [{ label: t("OK") }];
       const veil = h("div", "dlg-veil");
       const dlg = h("div", "dlg");
       dlg.appendChild(text("div", "dmsg", opts.msg));
@@ -316,7 +363,7 @@
           this.data = opts.rows();
           if (opts.onRender) opts.onRender(this);
           if (!this.data.length) {
-            page.appendChild(msgEl(opts.empty || { big: "Nothing Here", small: "" }));
+            page.appendChild(msgEl(opts.empty || { big: t("Nothing Here"), small: "" }));
             return;
           }
           let host = page;
@@ -367,6 +414,9 @@
             knob.style.height = u(kh);
             knob.style.top = u((this.first / Math.max(1, n - VISIBLE)) * (89.5 - kh));
           }
+          // With the rail in place, which narrows the rows. The first paint is
+          // before the page is on screen, which fits it then.
+          if (this.inner.isConnected) fitLines(this.inner.querySelectorAll(".lbl"));
         },
         _row(r, i) {
           const row = h("div", "row" + (i === this.sel ? " sel" : "") + (r.dim ? " dim" : ""));
@@ -467,13 +517,13 @@
         split: true,
         refreshOnLibrary: true,
         rows: () => {
-          const rows = [{ label: "Music", chevron: true, action: () => ui.push(ui.musicScreen()) }];
-          if (ui.player.current()) rows.push({ label: "Now Playing", chevron: true, action: () => ui.openNowPlaying() });
+          const rows = [{ label: t("Music"), chevron: true, action: () => ui.push(ui.musicScreen()) }];
+          if (ui.player.current()) rows.push({ label: t("Now Playing"), chevron: true, action: () => ui.openNowPlaying() });
           rows.push(
-            { label: "Shuffle Songs", action: () => ui.shuffleAll() },
-            { label: "Add Music", chevron: true, action: () => ui.push(ui.addScreen()) },
-            { label: "Settings", chevron: true, action: () => ui.push(ui.settingsScreen()) },
-            { label: "About", chevron: true, action: () => ui.push(ui.aboutScreen()) },
+            { label: t("Shuffle Songs"), action: () => ui.shuffleAll() },
+            { label: t("Add Music"), chevron: true, action: () => ui.push(ui.addScreen()) },
+            { label: t("Settings"), chevron: true, action: () => ui.push(ui.settingsScreen()) },
+            { label: t("About"), chevron: true, action: () => ui.push(ui.aboutScreen()) },
           );
           return rows;
         },
@@ -507,17 +557,17 @@
       const ui = this;
       return this.list({
         name: "music",
-        title: "Music",
+        title: t("Music"),
         route: ["music"],
         refreshOnLibrary: true,
         rows: () => (ui.lib.count === 0 ? [] : [
-          { label: "Playlists", chevron: true, action: () => ui.push(ui.playlistsScreen()) },
-          { label: "Albums", chevron: true, action: () => ui.push(ui.coverScreen()) },
-          { label: "Artists", chevron: true, action: () => ui.push(ui.artistsScreen()) },
-          { label: "Songs", chevron: true, action: () => ui.push(ui.songsScreen()) },
-          { label: "Genres", chevron: true, action: () => ui.push(ui.genresScreen()) },
+          { label: t("Playlists"), chevron: true, action: () => ui.push(ui.playlistsScreen()) },
+          { label: t("Albums"), chevron: true, action: () => ui.push(ui.coverScreen()) },
+          { label: t("Artists"), chevron: true, action: () => ui.push(ui.artistsScreen()) },
+          { label: t("Songs"), chevron: true, action: () => ui.push(ui.songsScreen()) },
+          { label: t("Genres"), chevron: true, action: () => ui.push(ui.genresScreen()) },
         ]),
-        empty: { big: "No Music", small: "Go to Add Music to load songs from a hyper:// drive or your folders." },
+        empty: { big: t("No Music"), small: t("Go to Add Music to load songs from a hyper:// drive or your folders.") },
       });
     }
 
@@ -527,7 +577,7 @@
       const ui = this;
       return {
         name: "covers",
-        title: "Albums",
+        title: t("Albums"),
         route: ["cover"],
         refreshOnLibrary: true,
         idx: 0,
@@ -536,7 +586,7 @@
           this.page = page;
           this.albums = ui.lib.getAlbums();
           if (!this.albums.length) {
-            page.appendChild(msgEl({ big: "No Albums", small: "Add some music first." }));
+            page.appendChild(msgEl({ big: t("No Albums"), small: t("Add some music first.") }));
             return;
           }
           this.stage = h("div", "cf");
@@ -637,36 +687,36 @@
       const album = ui.lib.album(key);
       const screen = this.list({
         name: "album",
-        title: album ? album.name : "Album",
+        title: album ? album.name : t("Album"),
         route: ["album", key],
         rows: () => {
           const a = ui.lib.album(key);
           if (!a) return [];
-          return ui._shuffleRow(a.tracks).concat(a.tracks.map((t, i) => ({
-            label: t.title,
-            tnum: t.track || i + 1,
+          return ui._shuffleRow(a.tracks).concat(a.tracks.map((track, i) => ({
+            label: track.title,
+            tnum: track.track || i + 1,
             action: () => ui.playAndShow(a.tracks, i),
-            hold: () => ui.push(ui.songActionsScreen(t)),
+            hold: () => ui.push(ui.songActionsScreen(track)),
           })), [{
-            label: "Delete Album…",
+            label: t("Delete Album…"),
             dim: true,
             action: () => ui.dialog({
-              msg: `Delete ${a.name}?`,
-              sub: `${a.tracks.length} song${a.tracks.length === 1 ? "" : "s"} will be removed from this device.`,
+              msg: t("Delete {name}?", { name: a.name }),
+              sub: tp({ one: "{count} song will be removed from this device.", other: "{count} songs will be removed from this device." }, a.tracks.length),
               buttons: [
                 {
-                  label: "Delete",
+                  label: t("Delete"),
                   action: async () => {
                     await ui.lib.deleteAlbum(key);
                     ui.popIf("album");
                   },
                 },
-                { label: "Cancel" },
+                { label: t("Cancel") },
               ],
             }),
           }]);
         },
-        empty: { big: "Empty Album", small: "" },
+        empty: { big: t("Empty Album"), small: "" },
       });
       // land on the first song, Shuffle stays one scroll up
       if (album) screen.sel = this._shuffleRow(album.tracks).length;
@@ -677,7 +727,7 @@
     // random order. Nothing to shuffle in a list of one.
     _shuffleRow(tracks) {
       if (tracks.length < 2) return [];
-      return [{ label: "Shuffle", glyph: PT.icons.shuffle, action: () => this.shufflePlay(tracks) }];
+      return [{ label: t("Shuffle"), glyph: PT.icons.shuffle, action: () => this.shufflePlay(tracks) }];
     }
 
     _artistSongs(artist) {
@@ -688,16 +738,16 @@
       const ui = this;
       return this.list({
         name: "artists",
-        title: "Artists",
+        title: t("Artists"),
         route: ["artists"],
         refreshOnLibrary: true,
         rows: () => ui.lib.getArtists().map((a) => ({
           label: a.name,
-          value: String(a.tracks.length),
+          value: formatNumber(a.tracks.length),
           chevron: true,
           action: () => ui.push(ui.artistScreen(a.key)),
         })),
-        empty: { big: "No Artists", small: "Add some music first." },
+        empty: { big: t("No Artists"), small: t("Add some music first.") },
       });
     }
 
@@ -706,14 +756,14 @@
       const artist = ui.lib.artist(key);
       return this.list({
         name: "artist",
-        title: artist ? artist.name : "Artist",
+        title: artist ? artist.name : t("Artist"),
         route: ["artist", key],
         rows: () => {
           const a = ui.lib.artist(key);
           if (!a) return [];
           const songs = ui._artistSongs(a);
           return [
-            { label: "All Songs", chevron: true, action: () => ui.push(ui.songsScreen(songs, a.name, ["artistsongs", key])) },
+            { label: t("All Songs"), chevron: true, action: () => ui.push(ui.songsScreen(songs, a.name, ["artistsongs", key])) },
           ].concat(ui.lib.albumsOfArtist(key).map((al) => ({
             label: al.name,
             sub: al.year ? String(al.year) : "",
@@ -725,7 +775,7 @@
       });
     }
 
-    songsScreen(fixed = null, title = "Songs", route = null) {
+    songsScreen(fixed = null, title = t("Songs"), route = null) {
       const ui = this;
       const screen = this.list({
         name: "songs",
@@ -734,14 +784,14 @@
         refreshOnLibrary: !fixed,
         rows: () => {
           const songs = fixed || ui.lib.getSongs();
-          return ui._shuffleRow(songs).concat(songs.map((t, i) => ({
-            label: t.title,
-            sub: [t.artist, t.album].filter(Boolean).join(" — "),
+          return ui._shuffleRow(songs).concat(songs.map((track, i) => ({
+            label: track.title,
+            sub: [track.artist, track.album].filter(Boolean).join(" — "),
             action: () => ui.playAndShow(songs, i),
-            hold: () => ui.push(ui.songActionsScreen(t)),
+            hold: () => ui.push(ui.songActionsScreen(track)),
           })));
         },
-        empty: { big: "No Songs", small: "Add some music first." },
+        empty: { big: t("No Songs"), small: t("Add some music first.") },
       });
       // land on the first song, Shuffle stays one scroll up
       if ((fixed ? fixed.length : ui.lib.count) > 1) screen.sel = 1;
@@ -752,17 +802,17 @@
       const ui = this;
       return this.list({
         name: "genres",
-        title: "Genres",
+        title: t("Genres"),
         route: ["genres"],
         refreshOnLibrary: true,
         rows: () => ui.lib.getGenres().map((g) => ({
           label: g.name,
-          value: String(g.tracks.length),
+          value: formatNumber(g.tracks.length),
           chevron: true,
           action: () => ui.push(ui.songsScreen(
             g.tracks.slice().sort((a, b) => PT.sortName(a.title).localeCompare(PT.sortName(b.title))), g.name, ["genre", g.key])),
         })),
-        empty: { big: "No Genres", small: "Add some music first." },
+        empty: { big: t("No Genres"), small: t("Add some music first.") },
       });
     }
 
@@ -772,15 +822,15 @@
       const ui = this;
       return this.list({
         name: "playlists",
-        title: "Playlists",
+        title: t("Playlists"),
         route: ["playlists"],
         refreshOnLibrary: true,
         rows: () => [
           {
-            label: "New Playlist…", chevron: true,
+            label: t("New Playlist…"), chevron: true,
             action: () => ui.push(ui.nameEntryScreen({
-              title: "New Playlist",
-              placeholder: "My Mixtape",
+              title: t("New Playlist"),
+              placeholder: t("My Mixtape"),
               onDone: async (name) => {
                 const pl = await ui.lib.createPlaylist(name);
                 ui.pop();
@@ -790,7 +840,7 @@
           },
         ].concat(ui.lib.getPlaylists().map((pl) => ({
           label: pl.name,
-          value: String(pl.trackIds.length),
+          value: formatNumber(pl.trackIds.length),
           chevron: true,
           action: () => ui.push(ui.playlistScreen(pl.id)),
         }))),
@@ -802,7 +852,7 @@
       const pl = ui.lib.playlist(id);
       const screen = this.list({
         name: "playlist",
-        title: pl ? pl.name : "Playlist",
+        title: pl ? pl.name : t("Playlist"),
         route: ["playlist", id],
         refreshOnLibrary: true,
         rows: () => {
@@ -813,36 +863,36 @@
           const rows = ui._playlistActions(p, tracks);
           // Kept for the network off: whether each song made it yet.
           const kept = ui._keepsSongs(p) ? ui._kept.get(id) || null : null;
-          rows.push(...tracks.map((t, i) => {
+          rows.push(...tracks.map((track, i) => {
             const row = {
-              label: t.title,
+              label: track.title,
               tnum: i + 1,
-              sub: t.artist,
+              sub: track.artist,
               action: () => ui.playAndShow(tracks, i),
               hold: () => ui.dialog({
-                msg: `Remove from ${p.name}?`,
-                sub: t.title,
+                msg: t("Remove from {name}?", { name: p.name }),
+                sub: track.title,
                 buttons: [
-                  { label: "Remove", action: () => ui.lib.removeFromPlaylist(id, t.id) },
-                  { label: "Cancel" },
+                  { label: t("Remove"), action: () => ui.lib.removeFromPlaylist(id, track.id) },
+                  { label: t("Cancel") },
                 ],
               }),
             };
             if (kept) {
-              const here = kept.here.has(t.id);
+              const here = kept.here.has(track.id);
               row.glyph = here ? PT.icons.onDevice : PT.icons.offDevice;
               row.glyphOff = !here;
-              row.glyphTitle = here ? "On this device" : "Not on this device yet";
+              row.glyphTitle = here ? t("On this device") : t("Not on this device yet");
             }
             return row;
           }));
           rows.push({
-            label: "Delete Playlist…", dim: true, action: () => ui.dialog({
-              msg: `Delete ${p.name}?`,
-              sub: "The songs stay in your library.",
+            label: t("Delete Playlist…"), dim: true, action: () => ui.dialog({
+              msg: t("Delete {name}?", { name: p.name }),
+              sub: t("The songs stay in your library."),
               buttons: [
-                { label: "Delete", action: () => ui.lib.deletePlaylist(id).then(() => ui.popIf("playlist")) },
-                { label: "Cancel" },
+                { label: t("Delete"), action: () => ui.lib.deletePlaylist(id).then(() => ui.popIf("playlist")) },
+                { label: t("Cancel") },
               ],
             }),
           });
@@ -863,7 +913,7 @@
         if (!before || before.saved !== state.saved || before.total !== state.total) screen.refresh();
         // Said out loud once, so nobody has to count the marks.
         if (state.complete && before && !before.complete && !ui._dialog) {
-          ui.dialog({ msg: allSavedText(state.total), sub: "They play with the network off.", buttons: [{ label: "OK" }] });
+          ui.dialog({ msg: allSavedText(state.total), sub: t("They play with the network off."), buttons: [{ label: t("OK") }] });
         }
       };
       // land on the first song, the rows above it stay one scroll up
@@ -875,8 +925,8 @@
     // The rows above a playlist's songs.
     _playlistActions(p, tracks) {
       const rows = this._shuffleRow(tracks).concat([
-        { label: "Add Songs…", chevron: true, dim: true, action: () => this.push(this.addSongsScreen(p.id)) },
-        { label: "Share This Playlist…", dim: true, action: () => this.sharePlaylist(p.id) },
+        { label: t("Add Songs…"), chevron: true, dim: true, action: () => this.push(this.addSongsScreen(p.id)) },
+        { label: t("Share This Playlist…"), dim: true, action: () => this.sharePlaylist(p.id) },
       ]);
       // An imported playlist is a list of addresses until the folder behind
       // it is on the device. Only offered where something can actually do
@@ -885,14 +935,16 @@
         if (this._keepsSongs(p)) {
           const state = this._kept.get(p.id);
           rows.push({
-            label: "On This Device",
-            value: !state ? "" : state.complete ? `All ${state.total}` : `${state.saved} of ${state.total}`,
+            label: t("On This Device"),
+            value: !state ? "" : state.complete
+              ? t("All {count}", { count: formatNumber(state.total) })
+              : t("{count} of {total}", { count: formatNumber(state.saved), total: formatNumber(state.total) }),
             dim: true,
             chevron: true,
             action: () => this.push(this.keepScreen(p.id)),
           });
         } else {
-          rows.push({ label: "Keep On This Device…", dim: true, action: () => this.keepPlaylistOffline(p) });
+          rows.push({ label: t("Keep On This Device…"), dim: true, action: () => this.keepPlaylistOffline(p) });
         }
       }
       return rows;
@@ -903,18 +955,18 @@
       const pl = ui.lib.playlist(id);
       const screen = this.list({
         name: "addsongs",
-        title: pl ? `Add to ${pl.name}` : "Add Songs",
+        title: pl ? t("Add to {name}", { name: pl.name }) : t("Add Songs"),
         route: ["addsongs", id],
         rows: () => {
           const p = ui.lib.playlist(id);
           if (!p) return [];
-          return ui.lib.getSongs().map((t) => ({
-            label: t.title,
-            sub: [t.artist, t.album].filter(Boolean).join(" — "),
-            value: p.trackIds.includes(t.id) ? "✓" : "",
+          return ui.lib.getSongs().map((track) => ({
+            label: track.title,
+            sub: [track.artist, track.album].filter(Boolean).join(" — "),
+            value: p.trackIds.includes(track.id) ? "✓" : "",
             action: async () => {
-              if (p.trackIds.includes(t.id)) await ui.lib.removeFromPlaylist(id, t.id);
-              else await ui.lib.addToPlaylist(id, t.id);
+              if (p.trackIds.includes(track.id)) await ui.lib.removeFromPlaylist(id, track.id);
+              else await ui.lib.addToPlaylist(id, track.id);
               const keep = screen.sel;
               screen.refresh();
               screen.sel = keep;
@@ -922,7 +974,7 @@
             },
           }));
         },
-        empty: { big: "No Songs", small: "Add some music first." },
+        empty: { big: t("No Songs"), small: t("Add some music first.") },
       });
       return screen;
     }
@@ -936,24 +988,24 @@
         title: track.title,
         rows: () => [
           {
-            label: "Add to Playlist…",
+            label: t("Add to Playlist…"),
             chevron: true,
             action: () => { ui.pop(); ui.push(ui.pickPlaylistScreen(track)); },
           },
           {
-            label: "Delete Song…",
+            label: t("Delete Song…"),
             action: () => ui.dialog({
-              msg: "Delete this song?",
+              msg: t("Delete this song?"),
               sub: track.title,
               buttons: [
                 {
-                  label: "Delete",
+                  label: t("Delete"),
                   action: async () => {
                     await ui.lib.deleteTrack(track.id);
                     ui.popIf("songactions");
                   },
                 },
-                { label: "Cancel" },
+                { label: t("Cancel") },
               ],
             }),
           },
@@ -965,29 +1017,33 @@
       const ui = this;
       return this.list({
         name: "pickpl",
-        title: "Add to Playlist",
+        title: t("Add to Playlist"),
         rows: () => [
           {
-            label: "New Playlist…", chevron: true,
+            label: t("New Playlist…"), chevron: true,
             action: () => ui.push(ui.nameEntryScreen({
-              title: "New Playlist",
-              placeholder: "My Mixtape",
+              title: t("New Playlist"),
+              placeholder: t("My Mixtape"),
               onDone: async (name) => {
                 const pl = await ui.lib.createPlaylist(name);
                 await ui.lib.addToPlaylist(pl.id, track.id);
                 ui.pop();
                 ui.popIf("pickpl");
-                ui.dialog({ msg: `Added to ${pl.name}`, sub: track.title, buttons: [{ label: "OK" }] });
+                ui.dialog({ msg: t("Added to {name}", { name: pl.name }), sub: track.title, buttons: [{ label: t("OK") }] });
               },
             })),
           },
         ].concat(ui.lib.getPlaylists().map((pl) => ({
           label: pl.name,
-          value: String(pl.trackIds.length),
+          value: formatNumber(pl.trackIds.length),
           action: async () => {
             const ok = await ui.lib.addToPlaylist(pl.id, track.id);
             ui.popIf("pickpl");
-            ui.dialog({ msg: ok ? `Added to ${pl.name}` : `Already in ${pl.name}`, sub: track.title, buttons: [{ label: "OK" }] });
+            ui.dialog({
+              msg: ok ? t("Added to {name}", { name: pl.name }) : t("Already in {name}", { name: pl.name }),
+              sub: track.title,
+              buttons: [{ label: t("OK") }],
+            });
           },
         }))),
       });
@@ -997,13 +1053,15 @@
       const ui = this;
       return {
         name: "nameentry",
-        title: opts.title || "Name",
+        title: opts.title || t("Name"),
         render(page) {
           const box = h("div", "urlpage");
           box.innerHTML = `
-            <div class="cap">${opts.title || "Name"}</div>
-            <input type="text" spellcheck="false" autocomplete="off" maxlength="80">
-            <div class="hint">Press the center button or Enter when done.</div>`;
+            <div class="cap"></div>
+            <input type="text" spellcheck="false" autocomplete="off" maxlength="80" dir="auto">
+            <div class="hint"></div>`;
+          box.querySelector(".cap").textContent = this.title;
+          box.querySelector(".hint").textContent = t("Press the center button or Enter when done.");
           page.appendChild(box);
           this.input = box.querySelector("input");
           this.input.placeholder = opts.placeholder || "";
@@ -1014,7 +1072,7 @@
           setTimeout(() => this.input.focus(), 240);
         },
         onSelect() {
-          const name = this.input.value.trim() || this.input.placeholder || "New Playlist";
+          const name = this.input.value.trim() || this.input.placeholder || t("New Playlist");
           this.input.blur();
           Promise.resolve(opts.onDone(name)).catch((err) => console.warn(err));
         },
@@ -1026,27 +1084,27 @@
       const ui = this;
       return this.list({
         name: "about",
-        title: "About",
+        title: t("About"),
         route: ["about"],
         refreshOnLibrary: true,
         rows: () => [
           {
             label: "PeerTunes", value: "1.0.0", chevron: true,
             action: () => ui.dialog({
-              msg: "Open GitHub?",
+              msg: t("Open GitHub?"),
               sub: REPO_URL,
               buttons: [
-                { label: "Open", action: () => { try { window.open(REPO_URL, "_blank", "noopener"); } catch {} } },
-                { label: "Cancel" },
+                { label: t("Open"), action: () => { try { window.open(REPO_URL, "_blank", "noopener"); } catch {} } },
+                { label: t("Cancel") },
               ],
             }),
           },
-          { label: "Songs", value: String(ui.lib.count) },
-          { label: "Albums", value: String(ui.lib.getAlbums().length) },
-          { label: "Artists", value: String(ui.lib.getArtists().length) },
-          { label: "Sources", value: String(ui.lib.sources.length) },
-          { label: "Made for PeerSky", value: "hyper://" },
-          { label: "How to Use", chevron: true, action: () => PT.showWelcome() },
+          { label: t("Songs"), value: formatNumber(ui.lib.count) },
+          { label: t("Albums"), value: formatNumber(ui.lib.getAlbums().length) },
+          { label: t("Artists"), value: formatNumber(ui.lib.getArtists().length) },
+          { label: t("Sources"), value: formatNumber(ui.lib.sources.length) },
+          { label: t("Made for PeerSky"), value: "hyper://" },
+          { label: t("How to Use"), chevron: true, action: () => PT.showWelcome() },
         ],
       });
     }
@@ -1054,7 +1112,7 @@
     shuffleAll() {
       const songs = this.lib.getSongs();
       if (!songs.length) {
-        this.dialog({ msg: "No Music", sub: "Add some songs first.", buttons: [{ label: "OK" }] });
+        this.dialog({ msg: t("No Music"), sub: t("Add some songs first."), buttons: [{ label: t("OK") }] });
         return;
       }
       this.shufflePlay(songs);
@@ -1102,13 +1160,13 @@
         if (current) this.openNowPlaying();
         return !!current;
       }
-      const at = player.queue.findIndex((t) => t.id === id);
+      const at = player.queue.findIndex((track) => track.id === id);
       if (at >= 0) {
         await player.cueAt(at);
       } else {
         const track = this.lib.tracks.get(id);
         if (!track) {
-          this.dialog({ msg: "Song not found", sub: "It is no longer in your library.", buttons: [{ label: "OK" }] });
+          this.dialog({ msg: t("Song not found"), sub: t("It is no longer in your library."), buttons: [{ label: t("OK") }] });
           return false;
         }
         const album = this.lib.albumOf(track);
@@ -1126,7 +1184,7 @@
       let cleanup = [];
       return {
         name: "now",
-        title: "Now Playing",
+        title: t("Now Playing"),
         route: ["now"],
         mode: "normal",
         render(page) {
@@ -1145,8 +1203,11 @@
               <div class="np-progress"><div class="np-fill"></div></div>
               <div class="np-times"><span class="t-el">0:00</span><span class="t-rem">-0:00</span></div>
               <div class="np-vol">${PT.icons.speaker}<div class="vbar"><div class="vfill"></div></div></div>
-              <div class="np-shuf">${PT.icons.shuffle}<span class="np-shuf-lbl">Shuffle</span><span class="np-shuf-opts"><span data-on="0">Off</span><span data-on="1">On</span></span></div>
+              <div class="np-shuf">${PT.icons.shuffle}<span class="np-shuf-lbl"></span><span class="np-shuf-opts"><span data-on="0"></span><span data-on="1"></span></span></div>
             </div>`;
+          np.querySelector(".np-shuf-lbl").textContent = t("Shuffle");
+          np.querySelector('.np-shuf-opts [data-on="0"]').textContent = t("Off");
+          np.querySelector('.np-shuf-opts [data-on="1"]').textContent = t("On");
           page.appendChild(np);
           this.np = np;
           this.els = {
@@ -1232,22 +1293,25 @@
           });
         },
         async paintTrack() {
-          const t = ui.player.current();
-          if (!t) return;
-          this.els.title.textContent = t.title;
-          this.els.artist.textContent = t.artist || "Unknown Artist";
-          this.els.album.textContent = t.album || "";
+          const track = ui.player.current();
+          if (!track) return;
+          this.els.title.textContent = track.title;
+          this.els.artist.textContent = track.artist || t("Unknown Artist");
+          this.els.album.textContent = track.album || "";
+          fitLines([this.els.artist, this.els.album]);
           this.paintBadges();
-          const cover = await ui.lib.trackCover(t).catch(() => null);
+          const cover = await ui.lib.trackCover(track).catch(() => null);
           this.els.art.src = cover || DEFAULT_COVER;
         },
         paintBadges() {
           const on = ui.player.shuffle;
           // Shuffle reorders the queue, so the place in it moves too.
-          this.els.idx.textContent = ui.player.current() ? `${ui.player.pos + 1} of ${ui.player.queue.length}` : "";
+          this.els.idx.textContent = ui.player.current()
+            ? t("{count} of {total}", { count: formatNumber(ui.player.pos + 1), total: formatNumber(ui.player.queue.length) })
+            : "";
           this.els.shuffle.classList.toggle("on", on);
           this.els.shuffle.setAttribute("aria-pressed", on ? "true" : "false");
-          this.els.shuffle.setAttribute("aria-label", on ? "Shuffle is on" : "Shuffle is off");
+          this.els.shuffle.setAttribute("aria-label", on ? t("Shuffle is on") : t("Shuffle is off"));
           this.els.shufOpts.forEach((el) => el.classList.toggle("on", (el.dataset.on === "1") === on));
           const b = [];
           if (ui.player.repeat === "all") b.push(PT.icons.repeat);
@@ -1328,33 +1392,33 @@
       const ui = this;
       return this.list({
         name: "add",
-        title: "Add Music",
+        title: t("Add Music"),
         route: ["add"],
         refreshOnLibrary: true,
         rows: () => {
           // phones rarely support folder pickers, so lead with plain files there
           const phone = matchMedia("(pointer: coarse)").matches;
           const uploads = [
-            { label: "Upload Folder…", action: () => document.getElementById("file-dir").click() },
-            { label: "Upload Files…", sub: phone ? "best on phones" : "", action: () => document.getElementById("file-flat").click() },
+            { label: t("Upload Folder…"), action: () => document.getElementById("file-dir").click() },
+            { label: t("Upload Files…"), sub: phone ? t("best on phones") : "", action: () => document.getElementById("file-flat").click() },
           ];
           if (phone) uploads.reverse();
           return [
-            { label: "Open URL…", sub: PT.P2P_SCHEMES.includes("ipfs") ? "hyper:// ipfs:// https://" : "hyper:// https://", chevron: true, action: () => ui.push(ui.urlScreen()) },
+            { label: t("Open URL…"), sub: PT.P2P_SCHEMES.includes("ipfs") ? "hyper:// ipfs:// https://" : "hyper:// https://", chevron: true, action: () => ui.push(ui.urlScreen()) },
             ...uploads,
             {
-              label: "Zipify Tunes…", sub: "download a playlist to your device first",
+              label: "Zipify Tunes…", sub: t("download a playlist to your device first"),
               action: () => ui.dialog({
-                msg: "Open Zipify Tunes?",
-                sub: "A tool for saving a whole playlist as files you can load here. Opens GitHub.",
+                msg: t("Open Zipify Tunes?"),
+                sub: t("A tool for saving a whole playlist as files you can load here. Opens GitHub."),
                 buttons: [
-                  { label: "Open", action: () => { try { window.open(ZIPIFY_URL, "_blank", "noopener"); } catch {} } },
-                  { label: "Cancel" },
+                  { label: t("Open"), action: () => { try { window.open(ZIPIFY_URL, "_blank", "noopener"); } catch {} } },
+                  { label: t("Cancel") },
                 ],
               }),
             },
-            { label: "Share Library…", action: () => ui.shareLibrary() },
-          { label: "Rescan Sources", value: String(ui.lib.sources.length), action: () => ui.runImport(() => ui.lib.rescan(), "Rescanning") },
+            { label: t("Share Library…"), action: () => ui.shareLibrary() },
+          { label: t("Rescan Sources"), value: formatNumber(ui.lib.sources.length), action: () => ui.runImport(() => ui.lib.rescan(), t("Rescanning")) },
           ];
         },
       });
@@ -1375,18 +1439,18 @@
           return;
         }
         this.dialog({
-          msg: res.status === "waiting-for-wifi" ? "Waiting for Wi-Fi" : "Downloading",
+          msg: res.status === "waiting-for-wifi" ? t("Waiting for Wi-Fi") : t("Downloading"),
           sub: res.status === "waiting-for-wifi"
-            ? "The songs download as soon as you are on Wi-Fi. Settings shows how it is going."
-            : "The songs are being saved to this device. Settings shows how it is going.",
-          buttons: [{ label: "OK" }],
+            ? t("The songs download as soon as you are on Wi-Fi. Settings shows how it is going.")
+            : t("The songs are being saved to this device. Settings shows how it is going."),
+          buttons: [{ label: t("OK") }],
         });
         return;
       }
       this.dialog({
-        msg: "Could not keep it here",
-        sub: (res && res.error) || "Nothing answered for that folder.",
-        buttons: [{ label: "OK" }],
+        msg: t("Could not keep it here"),
+        sub: (res && res.error) || t("Nothing answered for that folder."),
+        buttons: [{ label: t("OK") }],
       });
     }
 
@@ -1452,7 +1516,7 @@
       const ui = this;
       return {
         name: "keep",
-        title: "On This Device",
+        title: t("On This Device"),
         keepId: id,
         render(page) {
           const el = h("div", "keep");
@@ -1490,7 +1554,7 @@
           els.big.textContent = view.big;
           els.fill.style.width = `${Math.round(view.fraction * 100)}%`;
           els.count.textContent = view.count;
-          els.now.textContent = view.song ? "Now saving" : "";
+          els.now.textContent = view.song ? t("Now saving") : "";
           els.title.textContent = view.song;
           els.song.hidden = !view.song;
           els.note.textContent = view.note;
@@ -1505,17 +1569,17 @@
     shareLibrary() {
       const tracks = this.lib.getSongs();
       if (!tracks.length) {
-        this.dialog({ msg: "Nothing to share yet", sub: "Add some music first.", buttons: [{ label: "OK" }] });
+        this.dialog({ msg: t("Nothing to share yet"), sub: t("Add some music first."), buttons: [{ label: t("OK") }] });
         return;
       }
-      this._publishAndShare("My Music", tracks, "library");
+      this._publishAndShare(t("My Music"), tracks, "library");
     }
 
     sharePlaylist(id) {
       const pl = this.lib.playlist(id);
       const tracks = this.lib.playlistTracks(id);
       if (!pl || !tracks.length) {
-        this.dialog({ msg: "Playlist is empty", sub: "Add some songs to it first.", buttons: [{ label: "OK" }] });
+        this.dialog({ msg: t("Playlist is empty"), sub: t("Add some songs to it first."), buttons: [{ label: t("OK") }] });
         return;
       }
       this._publishAndShare(pl.name, tracks, pl.id);
@@ -1524,7 +1588,7 @@
     async _publishAndShare(name, tracks, key) {
       if (this.lib.busy) return;
       try {
-        const folder = await this.runTask(() => this.lib.publishShare(name, tracks, key), "Publishing");
+        const folder = await this.runTask(() => this.lib.publishShare(name, tracks, key), t("Publishing"));
         this._offerLink(SHARE_BASE + "#playlist=" + encodeURIComponent(folder));
       } catch (err) {
         console.warn(err);
@@ -1533,23 +1597,23 @@
           const urls = this.lib.sources.map((s) => s.url);
           if (urls.length) {
             this.dialog({
-              msg: "Can't publish from here",
-              sub: "Publishing needs PeerTunes inside PeerSky. You can still share your synced folders directly.",
+              msg: t("Can't publish from here"),
+              sub: t("Publishing needs PeerTunes inside PeerSky. You can still share your synced folders directly."),
               buttons: [
-                { label: "Share Sources", action: () => this._offerLink(SHARE_BASE + "#" + urls.map((u) => "playlist=" + encodeURIComponent(u)).join("&")) },
-                { label: "Cancel" },
+                { label: t("Share Sources"), action: () => this._offerLink(SHARE_BASE + "#" + urls.map((u) => "playlist=" + encodeURIComponent(u)).join("&")) },
+                { label: t("Cancel") },
               ],
               defaultSel: 0,
             });
           } else {
             this.dialog({
-              msg: "Publishing needs PeerSky",
-              sub: "Open PeerTunes in PeerSky to publish local songs to a hyper:// drive.",
-              buttons: [{ label: "OK" }],
+              msg: t("Publishing needs PeerSky"),
+              sub: t("Open PeerTunes in PeerSky to publish local songs to a hyper:// drive."),
+              buttons: [{ label: t("OK") }],
             });
           }
         } else {
-          this.dialog({ msg: "Could not publish", sub: "Check the connection and try again.", buttons: [{ label: "OK" }] });
+          this.dialog({ msg: t("Could not publish"), sub: t("Check the connection and try again."), buttons: [{ label: t("OK") }] });
         }
       }
     }
@@ -1558,25 +1622,25 @@
       // no silent copy attempt: by now the button press is too old for the
       // clipboard api, so we ask for one fresh press on Copy instead
       const buttons = [{
-        label: "Copy",
+        label: t("Copy"),
         action: async () => {
           const ok = await copyText(link);
           // the link stays on screen after a copy, so it is never lost the
           // moment the first dialog closes
           this.dialog({
-            msg: ok ? "Link copied" : "Could not copy",
-            sub: ok ? "Send it to a friend.\n" + link : "Select the link below and copy it by hand.\n" + link,
-            buttons: [{ label: "Done" }],
+            msg: ok ? t("Link copied") : t("Could not copy"),
+            sub: `${ok ? t("Send it to a friend.") : t("Select the link below and copy it by hand.")}\n${link}`,
+            buttons: [{ label: t("Done") }],
           });
         },
       }];
       if (typeof navigator.share === "function") {
-        buttons.push({ label: "Share…", action: () => { navigator.share({ title: "PeerTunes", url: link }).catch(() => {}); } });
+        buttons.push({ label: t("Share…"), action: () => { navigator.share({ title: "PeerTunes", url: link }).catch(() => {}); } });
       }
-      buttons.push({ label: "Done" });
+      buttons.push({ label: t("Done") });
       this.dialog({
-        msg: "Share it with other peers!",
-        sub: "Anyone with this link can listen, straight from the source.\n" + link,
+        msg: t("Share it with other peers!"),
+        sub: `${t("Anyone with this link can listen, straight from the source.")}\n${link}`,
         buttons,
         defaultSel: 0,
       });
@@ -1586,14 +1650,19 @@
       const ui = this;
       return {
         name: "url",
-        title: "Open URL",
+        title: t("Open URL"),
         render(page) {
           const box = h("div", "urlpage");
           box.innerHTML = `
-            <div class="cap">Load music from a URL</div>
+            <div class="cap"></div>
             <input type="url" spellcheck="false" autocapitalize="off" autocomplete="off" placeholder="hyper://…">
-            <button type="button" class="urlscan">${PT.icons.qr}<span>Scan QR Code</span></button>
-            <div class="hint">Point it at a hyper:// drive folder with songs${PT.P2P_SCHEMES.includes("ipfs") ? ", an ipfs:// folder," : ""} or a direct audio link. Press the center button or Enter to sync.</div>`;
+            <button type="button" class="urlscan">${PT.icons.qr}<span></span></button>
+            <div class="hint"></div>`;
+          box.querySelector(".cap").textContent = t("Load music from a URL");
+          box.querySelector(".urlscan span").textContent = t("Scan QR Code");
+          box.querySelector(".hint").textContent = PT.P2P_SCHEMES.includes("ipfs")
+            ? t("Point it at a hyper:// drive folder with songs, an ipfs:// folder, or a direct audio link. Press the center button or Enter to sync.")
+            : t("Point it at a hyper:// drive folder with songs or a direct audio link. Press the center button or Enter to sync.");
           page.appendChild(box);
           this.input = box.querySelector("input");
           this.input.addEventListener("keydown", (e) => {
@@ -1604,7 +1673,7 @@
             ui.push(ui.scanScreen((url) => {
               ui.popIf("scan");
               ui.popIf("url");
-              ui.runImport(() => ui.lib.addUrl(url), "Syncing");
+              ui.runImport(() => ui.lib.addUrl(url), t("Syncing"));
             }));
           });
           setTimeout(() => this.input.focus(), 240);
@@ -1614,7 +1683,7 @@
           if (!url) return;
           this.input.blur();
           ui.pop();
-          ui.runImport(() => ui.lib.addUrl(url), "Syncing");
+          ui.runImport(() => ui.lib.addUrl(url), t("Syncing"));
         },
         onScroll() {},
       };
@@ -1642,15 +1711,16 @@
 
       return {
         name: "scan",
-        title: "Scan QR",
+        title: t("Scan QR"),
         render(page) {
           const box = h("div", "scanpage");
           box.innerHTML = `
             <video playsinline muted autoplay></video>
             <div class="scan-frame"></div>
-            <div class="scan-note">Point at a QR code</div>`;
+            <div class="scan-note"></div>`;
           page.appendChild(box);
           this.note = box.querySelector(".scan-note");
+          this.note.textContent = t("Point at a QR code");
           this.start(box.querySelector("video"));
         },
         destroy() { stop(); },
@@ -1660,7 +1730,7 @@
           // does not exist. Fall back to the web API outside the app.
           if (typeof window.peerskyScanQr === "function") {
             video.remove();
-            this.note.textContent = "Opening the camera...";
+            this.note.textContent = t("Opening the camera...");
             let scanned = null;
             try {
               scanned = await window.peerskyScanQr();
@@ -1678,21 +1748,21 @@
               return;
             }
             this.note.textContent = scanned
-              ? "That QR code is not a link PeerTunes can play."
-              : "Nothing scanned. Type the URL instead.";
+              ? t("That QR code is not a link PeerTunes can play.")
+              : t("Nothing scanned. Type the URL instead.");
             return;
           }
 
           const Detector = window.BarcodeDetector;
           if (!Detector || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            this.note.textContent = "This browser cannot scan QR codes. Type the URL instead.";
+            this.note.textContent = t("This browser cannot scan QR codes. Type the URL instead.");
             return;
           }
 
           try {
             detector = new Detector({ formats: ["qr_code"] });
           } catch {
-            this.note.textContent = "This browser cannot scan QR codes. Type the URL instead.";
+            this.note.textContent = t("This browser cannot scan QR codes. Type the URL instead.");
             return;
           }
 
@@ -1703,8 +1773,8 @@
             });
           } catch (err) {
             this.note.textContent = err && err.name === "NotAllowedError"
-              ? "Camera access was denied."
-              : "No camera available.";
+              ? t("Camera access was denied.")
+              : t("No camera available.");
             return;
           }
 
@@ -1735,18 +1805,23 @@
       };
     }
 
-    syncScreen(label = "Sync in Progress") {
+    syncScreen(label = t("Sync in Progress")) {
       const ui = this;
       let cleanup = null;
       return {
         name: "sync",
-        title: "Sync",
+        title: t("Sync"),
         render(page) {
           const el = h("div", "sync");
-          el.innerHTML = `<div class="sync-in">${PT.icons.sync}<div class="big">${label}</div><div class="count">Connecting…</div><div class="warn">Do not disconnect.</div></div>`;
+          el.innerHTML = `<div class="sync-in">${PT.icons.sync}<div class="big"></div><div class="count"></div><div class="warn"></div></div>`;
+          el.querySelector(".big").textContent = label;
+          el.querySelector(".warn").textContent = t("Do not disconnect.");
           page.appendChild(el);
           const count = el.querySelector(".count");
-          const onProg = (e) => { count.textContent = `${e.detail.done} of ${e.detail.total}`; };
+          count.textContent = t("Connecting…");
+          const onProg = (e) => {
+            count.textContent = t("{count} of {total}", { count: formatNumber(e.detail.done), total: formatNumber(e.detail.total) });
+          };
           ui.lib.addEventListener("progress", onProg);
           cleanup = () => ui.lib.removeEventListener("progress", onProg);
         },
@@ -1766,7 +1841,7 @@
       }
     }
 
-    async runImport(fn, label = "Syncing") {
+    async runImport(fn, label = t("Syncing")) {
       if (this.lib.busy) return 0;
       let result = { added: 0, found: 0 }, failed = null;
       try {
@@ -1785,20 +1860,20 @@
           const inPeerSky = /^(hyper|ipfs|ipns|peersky):$/i.test(location.protocol) ||
             typeof window.peerskyHyperAsset === "function";
           this.dialog({
-            msg: "Can't reach that URL",
+            msg: t("Can't reach that URL"),
             sub: inPeerSky
-              ? `Nothing answered on ${scheme}://. Nobody may be seeding it right now, or the link may be wrong.`
-              : `This browser does not speak ${scheme}://. Open PeerTunes inside PeerSky, or use an http link here.`,
-            buttons: [{ label: "OK" }],
+              ? t("Nothing answered on {scheme}://. Nobody may be seeding it right now, or the link may be wrong.", { scheme })
+              : t("This browser does not speak {scheme}://. Open PeerTunes inside PeerSky, or use an http link here.", { scheme }),
+            buttons: [{ label: t("OK") }],
           });
         } else if (failed.code === "EMPTY") {
           this.dialog({
-            msg: "No songs found",
-            sub: "The folder loaded but had no audio files in it.",
-            buttons: [{ label: "OK" }],
+            msg: t("No songs found"),
+            sub: t("The folder loaded but had no audio files in it."),
+            buttons: [{ label: t("OK") }],
           });
         } else {
-          this.dialog({ msg: "Could not sync", sub: "Check the URL and try again.", buttons: [{ label: "OK" }] });
+          this.dialog({ msg: t("Could not sync"), sub: t("Check the URL and try again."), buttons: [{ label: t("OK") }] });
         }
       } else {
         const { added, found, partial } = result;
@@ -1807,14 +1882,20 @@
         // true and useless: the other seventeen were already here from a run
         // that had been interrupted. Say what is in the library now as well.
         const notes = [];
-        if (already) notes.push(`${already} of ${found} ${already === 1 ? "was" : "were"} already in your library`);
-        if (partial) notes.push("Some folders did not answer yet, so Rescan Sources later");
+        if (already) {
+          notes.push(tp({
+            one: "{count} of {total} was already in your library.",
+            other: "{count} of {total} were already in your library.",
+          }, already, { total: formatNumber(found) }));
+        }
+        if (partial) notes.push(t("Some folders did not answer yet, so Rescan Sources later."));
         this.dialog({
           msg: added
-            ? `Added ${added} song${added === 1 ? "" : "s"}`
-            : found ? "Already up to date" : "No new songs found",
-          sub: notes.join(". "),
-          buttons: [{ label: "OK" }],
+            ? tp({ one: "Added {count} song", other: "Added {count} songs" }, added)
+            : found ? t("Already up to date") : t("No new songs found"),
+          // one sentence to a line, which reads right in every language
+          sub: notes.join("\n"),
+          buttons: [{ label: t("OK") }],
         });
       }
       return result.added;
@@ -1827,28 +1908,28 @@
       const s = ui.settings;
       const screen = this.list({
         name: "settings",
-        title: "Settings",
+        title: t("Settings"),
         route: ["settings"],
         rows: () => [
           {
-            label: "Shuffle", value: s.shuffle ? "Songs" : "Off",
+            label: t("Shuffle"), value: s.shuffle ? t("Songs") : t("Off"),
             action: () => { ui.setShuffle(!s.shuffle); commit(); },
           },
           {
-            label: "Repeat", value: { off: "Off", one: "One", all: "All" }[s.repeat],
+            label: t("Repeat"), value: { off: t("Off"), one: t("One"), all: t("All") }[s.repeat],
             action: () => { s.repeat = { off: "one", one: "all", all: "off" }[s.repeat]; ui.player.repeat = s.repeat; commit(); },
           },
           {
-            label: "Clicker", value: s.clicker ? "On" : "Off",
+            label: t("Clicker"), value: s.clicker ? t("On") : t("Off"),
             action: () => { s.clicker = !s.clicker; ui.wheel.clicker = s.clicker; commit(); },
           },
           // The buzz on each turn of the wheel, apart from its sound.
           ...(PT.Wheel.canHaptic() ? [{
-            label: "Haptics", value: s.haptics ? "On" : "Off",
+            label: t("Haptics"), value: s.haptics ? t("On") : t("Off"),
             action: () => { s.haptics = !s.haptics; ui.wheel.haptics = s.haptics; commit(); },
           }] : []),
           {
-            label: "Shell", value: s.shell === "black" ? "Black" : "Silver",
+            label: t("Shell"), value: s.shell === "black" ? t("Black") : t("Silver"),
             action: () => {
               s.shell = s.shell === "black" ? "silver" : "black";
               PT.applyShell(s.shell === "black");
@@ -1856,17 +1937,17 @@
             },
           },
           {
-            label: "Backlight Dim", value: s.dim ? "On" : "Off",
+            label: t("Backlight Dim"), value: s.dim ? t("On") : t("Off"),
             action: () => { s.dim = !s.dim; commit(); },
           },
           // Moved here from Add Music, where nobody looked for it.
           {
-            label: "Clear All Songs…", action: () => ui.dialog({
-              msg: "Clear all songs?",
-              sub: "Removes every song, playlist and cover from this device. Playlists you shared stay shared.",
+            label: t("Clear All Songs…"), action: () => ui.dialog({
+              msg: t("Clear all songs?"),
+              sub: t("Removes every song, playlist and cover from this device. Playlists you shared stay shared."),
               buttons: [
-                { label: "Clear", action: () => ui.lib.clear().then(() => ui.replaceAll(ui.rootScreen())) },
-                { label: "Cancel" },
+                { label: t("Clear"), action: () => ui.lib.clear().then(() => ui.replaceAll(ui.rootScreen())) },
+                { label: t("Cancel") },
               ],
             }),
           },
@@ -1883,37 +1964,38 @@
     }
   }
 
-  const songList = (tracks) => tracks.map((t) => t.id).join(",");
+  const songList = (tracks) => tracks.map((track) => track.id).join(",");
 
   function allSavedText(total) {
-    if (!total) return "This playlist has no songs";
-    return total === 1 ? "The song is on this device" : `All ${total} songs are on this device`;
+    if (!total) return t("This playlist has no songs");
+    if (total === 1) return t("The song is on this device");
+    return tp({ one: "{count} song is on this device", other: "All {count} songs are on this device" }, total);
   }
 
   // What the progress screen says for the host's latest answer about a kept
   // playlist (see keepState in library.js). A song is only counted once all
   // of it is here, and the rest always says why it is not.
   function keepView(state) {
-    if (!state) return { icon: "busy", big: "Saving Songs", fraction: 0, count: "Checking…", song: "", note: "" };
+    if (!state) return { icon: "busy", big: t("Saving Songs"), fraction: 0, count: t("Checking…"), song: "", note: "" };
     if (state.complete) {
-      return { icon: "done", big: "All Saved", fraction: 1, count: allSavedText(state.total), song: "", note: "They play with the network off." };
+      return { icon: "done", big: t("All Saved"), fraction: 1, count: allSavedText(state.total), song: "", note: t("They play with the network off.") };
     }
     const fraction = state.saved / state.total;
-    const count = `${state.saved} of ${state.total} on this device`;
+    const count = t("{count} of {total} on this device", { count: formatNumber(state.saved), total: formatNumber(state.total) });
     if (state.cannot === state.total - state.saved) {
-      const note = state.cannot === 1 ? "1 is a web link, which cannot be kept." : `${state.cannot} are web links, which cannot be kept.`;
-      return { icon: "stuck", big: "On This Device", fraction, count, song: "", note };
+      const note = tp({ one: "{count} is a web link, which cannot be kept.", other: "{count} are web links, which cannot be kept." }, state.cannot);
+      return { icon: "stuck", big: t("On This Device"), fraction, count, song: "", note };
     }
     if (!state.current) {
-      return { icon: "stuck", big: "Waiting", fraction, count, song: "", note: "The rest saves when the person who shared them is back online." };
+      return { icon: "stuck", big: t("Waiting"), fraction, count, song: "", note: t("The rest saves when the person who shared them is back online.") };
     }
     return {
       icon: "busy",
-      big: "Saving Songs",
+      big: t("Saving Songs"),
       fraction,
       count,
       song: state.current.title,
-      note: state.stuck ? "Some are waiting for the person who shared them." : "",
+      note: state.stuck ? t("Some are waiting for the person who shared them.") : "",
     };
   }
 
@@ -1926,6 +2008,7 @@
   }
 
   PT.barFraction = barFraction;
+  PT.fitLines = fitLines;
   PT.keepView = keepView;
   PT.UI = UI;
   PT.DEFAULT_COVER = DEFAULT_COVER;

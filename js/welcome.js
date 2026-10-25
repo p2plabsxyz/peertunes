@@ -4,8 +4,12 @@
 (function (PT) {
   "use strict";
 
+  const { t, msg, tKey, direction } = PT.i18n || require("./i18n.js").i18n;
+
   const SEEN_KEY = "peertunes-welcome";
 
+  // The words are marked here and put in the language picked as each card is
+  // drawn. <b> is the one tag they hold.
   const STEPS = [
     {
       art: `<div class="wl-art wl-p2p" aria-hidden="true">
@@ -14,9 +18,8 @@
         <span class="wl-device wl-pod"><b></b></span>
       </div>`,
       title: "PeerTunes",
-      body: `<p class="wl-lead">A classic music player for your own songs.</p>
-        <p>Play songs from a <b>hyper://</b> drive, a folder on this device, or a playlist a friend shares.
-        The music comes straight from whoever has it: no account, no server, no tracking.</p>`,
+      lead: msg("A classic music player for your own songs."),
+      text: msg("Play songs from a <b>hyper://</b> drive, a folder on this device, or a playlist a friend shares. The music comes straight from whoever has it: no account, no server, no tracking."),
     },
     {
       art: `<div class="wl-art wl-wheel" aria-hidden="true">
@@ -29,16 +32,30 @@
         </span>
         <span class="wl-center"></span>
       </div>`,
-      title: "The wheel",
-      body: `<ul class="wl-moves">
-        <li><b>Circle</b> the wheel to scroll</li>
-        <li><b>Press the center</b> to pick</li>
-        <li><b>The top</b> goes back</li>
-        <li>The bottom plays and pauses, the sides skip</li>
-        <li><b>Hold the center</b> on a song to add it to a playlist</li>
-      </ul>`,
+      title: msg("The wheel"),
+      moves: [
+        msg("<b>Circle</b> the wheel to scroll"),
+        msg("<b>Press the center</b> to pick"),
+        msg("<b>The top</b> goes back"),
+        msg("The bottom plays and pauses, the sides skip"),
+        msg("<b>Hold the center</b> on a song to add it to a playlist"),
+      ],
     },
   ];
+
+  // Text as HTML with only its <b> tags kept: anything else is shown as is.
+  function bold(text) {
+    return String(text)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/&lt;(\/?)b&gt;/g, "<$1b>");
+  }
+
+  function bodyOf(step) {
+    if (step.moves) return `<ul class="wl-moves">${step.moves.map((move) => `<li>${bold(tKey(move))}</li>`).join("")}</ul>`;
+    return `<p class="wl-lead">${bold(tKey(step.lead))}</p><p>${bold(tKey(step.text))}</p>`;
+  }
 
   function seen() {
     try { return localStorage.getItem(SEEN_KEY) === "1"; } catch { return false; }
@@ -56,11 +73,12 @@
       root.setAttribute("role", "dialog");
       root.setAttribute("aria-modal", "true");
       root.setAttribute("aria-labelledby", "wl-title");
+      root.dir = direction();
       root.innerHTML = `<div class="wl-card">
         <div class="wl-step"></div>
         <div class="wl-dots">${STEPS.map(() => "<span></span>").join("")}</div>
         <div class="wl-actions">
-          <button type="button" class="wl-skip">Skip</button>
+          <button type="button" class="wl-skip"></button>
           <button type="button" class="wl-next"></button>
         </div>
       </div>`;
@@ -69,18 +87,19 @@
       const dots = Array.from(root.querySelectorAll(".wl-dots span"));
       const skip = root.querySelector(".wl-skip");
       const next = root.querySelector(".wl-next");
+      skip.textContent = t("Skip");
       let index = 0;
 
       function render() {
         const step = STEPS[index];
-        stepEl.innerHTML = `${step.art}<h1 id="wl-title"></h1>${step.body}`;
-        stepEl.querySelector("h1").textContent = step.title;
+        stepEl.innerHTML = `${step.art}<h1 id="wl-title"></h1>${bodyOf(step)}`;
+        stepEl.querySelector("h1").textContent = tKey(step.title);
         stepEl.querySelectorAll("[data-icon]").forEach((el) => {
           if (PT.icons && PT.icons[el.dataset.icon]) el.innerHTML = PT.icons[el.dataset.icon];
         });
         dots.forEach((dot, i) => dot.classList.toggle("on", i === index));
         const last = index === STEPS.length - 1;
-        next.textContent = last ? "Start listening" : "Next";
+        next.textContent = last ? t("Start listening") : t("Next");
         skip.hidden = last;
         next.focus({ preventScroll: true });
       }

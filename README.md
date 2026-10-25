@@ -76,6 +76,10 @@ In PeerSky Mobile, `Keep On This Device…` on an imported playlist saves every 
 
 Publishing needs PeerSky (that is where the drive writes live), on a desktop or a phone. On a phone the web view cannot fetch `hyper://`, so PeerSky gives the page `window.peerskyHyperWrite(url)`, which turns a `hyper://` address into one on the app's own server, and the writes go there. A phone shares the drive while PeerSky is open, and opens it again when PeerTunes starts. Outside PeerSky you can still share folders you synced from a URL. The app accepts `#playlist=` or `?playlist=` (and old `src=` links) with `hyper://`, `ipfs://`, `ipns://` and http(s) sources.
 
+## Languages
+
+PeerTunes shows the language PeerSky shows. PeerSky Mobile sets `window.peerskyTunes = { language, strings }` before the page loads, the English text of each word to its translation, and calls `PT.setLanguage` with a new set when another language is picked: the pages are drawn again where they are and the song keeps playing. Arabic, Persian and Urdu turn the screen around; the wheel stays as it is. Without that, as on a desktop or in a plain browser, it is all English. The words live in PeerSky Mobile's catalogs, and its `scripts/i18n.mjs` lists every one the app uses, so each `t()`, `tp()` and `msg()` call names its English text as one plain string.
+
 ## Loading from hyper://
 
 PeerTunes lists the folder with a `fetch` and the `Accept: application/json` header, the way hypercore-fetch answers with a JSON array of entries. It walks subfolders, reads only the byte ranges it needs for tags (with Range requests), and streams the audio straight from the drive when you play. If the server answers with an html index page instead of JSON, it reads the links from that, so a plain `python -m http.server` folder works too.
@@ -88,6 +92,7 @@ The whole app is static files with relative paths and plain scripts (no ES modul
 
 No dependencies, no bundler:
 
+- `js/i18n.js` the words in the language PeerSky shows, English by default
 - `js/metadata.js` tag parsers over a chunked reader (small ranged reads for remote files)
 - `js/library.js` IndexedDB library, folder scan, url crawl
 - `js/player.js` queue, shuffle, repeat, Media Session

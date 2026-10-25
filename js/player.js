@@ -4,6 +4,10 @@
 (function (PT) {
   "use strict";
 
+  // Songs are often called t here, so the words go through msg and tKey.
+  const { msg, tKey } = PT.i18n || require("./i18n.js").i18n;
+  const UNKNOWN_ARTIST = msg("Unknown Artist");
+
   class Player extends EventTarget {
     constructor(audio, library) {
       super();
@@ -348,7 +352,7 @@
       try {
         navigator.mediaSession.metadata = new MediaMetadata({
           title: track.title,
-          artist: track.artist || "Unknown Artist",
+          artist: track.artist || tKey(UNKNOWN_ARTIST),
           album: track.album || "",
           artwork,
         });
