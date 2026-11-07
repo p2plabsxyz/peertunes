@@ -82,7 +82,8 @@ test("albums and song lists have it too, but a list of one has nothing to shuffl
   assert.equal(songs.rows()[0].label, "Shuffle");
   assert.equal(songs.sel, 1);
 
-  const one = ui.songsScreen([song("x")], "One");
+  // A list of one of the library's songs, as an artist with one song has.
+  const one = ui.songsScreen([lib.getSongs()[0]], "One");
   assert.notEqual(one.rows()[0].label, "Shuffle");
   assert.equal(one.sel, 0);
 

@@ -696,7 +696,9 @@
             label: track.title,
             tnum: track.track || i + 1,
             action: () => ui.playAndShow(a.tracks, i),
-            hold: () => ui.push(ui.songActionsScreen(track)),
+            hold: () => ui.push(ui.songActionsScreen(track, {
+              tracks: () => (ui.lib.album(key) || { tracks: [] }).tracks,
+            })),
           })), [{
             label: t("Delete Album…"),
             dim: true,
@@ -781,14 +783,17 @@
         name: "songs",
         title,
         route: route || (fixed ? null : ["songs"]),
-        refreshOnLibrary: !fixed,
+        refreshOnLibrary: true,
         rows: () => {
-          const songs = fixed || ui.lib.getSongs();
+          // An artist's or a genre's songs as they were picked, less any
+          // deleted since, which stayed in the list.
+          const current = () => (fixed ? fixed.filter((track) => ui.lib.tracks.has(track.id)) : ui.lib.getSongs());
+          const songs = current();
           return ui._shuffleRow(songs).concat(songs.map((track, i) => ({
             label: track.title,
             sub: [track.artist, track.album].filter(Boolean).join(" — "),
             action: () => ui.playAndShow(songs, i),
-            hold: () => ui.push(ui.songActionsScreen(track)),
+            hold: () => ui.push(ui.songActionsScreen(track, { tracks: current })),
           })));
         },
         empty: { big: t("No Songs"), small: t("Add some music first.") },
@@ -869,14 +874,10 @@
               tnum: i + 1,
               sub: track.artist,
               action: () => ui.playAndShow(tracks, i),
-              hold: () => ui.dialog({
-                msg: t("Remove from {name}?", { name: p.name }),
-                sub: track.title,
-                buttons: [
-                  { label: t("Remove"), action: () => ui.lib.removeFromPlaylist(id, track.id) },
-                  { label: t("Cancel") },
-                ],
-              }),
+              hold: () => ui.push(ui.songActionsScreen(track, {
+                tracks: () => ui.lib.playlistTracks(id),
+                playlistId: id,
+              })),
             };
             if (kept) {
               const here = kept.here.has(track.id);
@@ -979,42 +980,198 @@
       return screen;
     }
 
-    // On-The-Go: hold the center button (or long press a song) to land here
-    // Hold a song to reach this: add it to a playlist, or remove it for good.
-    songActionsScreen(track) {
+    // Hold a song, with the center button or a long press, to reach this:
+    // share it, add it to a playlist, take it out of the playlist it is in,
+    // remove it for good, or pick more songs to do one of those with.
+    // `from` is the list the song was held in, as `tracks()` (read again each
+    // time, so deleted songs drop out) and the playlist's id when it is one.
+    songActionsScreen(track, from = null) {
       const ui = this;
+      const pl = from && from.playlistId ? ui.lib.playlist(from.playlistId) : null;
       return this.list({
         name: "songactions",
         title: track.title,
-        rows: () => [
-          {
-            label: t("Add to Playlist…"),
-            chevron: true,
-            action: () => { ui.pop(); ui.push(ui.pickPlaylistScreen(track)); },
-          },
-          {
+        rows: () => {
+          const rows = [
+            {
+              label: t("Share Song…"),
+              action: () => { ui.popIf("songactions"); ui.shareSong(track); },
+            },
+            {
+              label: t("Add to Playlist…"),
+              chevron: true,
+              action: () => { ui.pop(); ui.push(ui.pickPlaylistScreen([track])); },
+            },
+          ];
+          if (pl) {
+            rows.push({
+              label: t("Remove from {name}…", { name: pl.name }),
+              action: () => ui._confirmRemove(pl.id, [track], () => ui.popIf("songactions")),
+            });
+          }
+          rows.push({
             label: t("Delete Song…"),
-            action: () => ui.dialog({
-              msg: t("Delete this song?"),
-              sub: track.title,
-              buttons: [
-                {
-                  label: t("Delete"),
-                  action: async () => {
-                    await ui.lib.deleteTrack(track.id);
-                    ui.popIf("songactions");
-                  },
-                },
-                { label: t("Cancel") },
-              ],
-            }),
+            action: () => ui._confirmDelete([track], () => ui.popIf("songactions")),
+          });
+          if (from) {
+            rows.push({
+              label: t("Select Songs…"),
+              chevron: true,
+              action: () => { ui.pop(); ui.push(ui.selectSongsScreen(from, [track.id])); },
+            });
+          }
+          return rows;
+        },
+      });
+    }
+
+    // The songs of a list with a mark on each one picked. Tap or hold a song
+    // to pick it or let it go; what to do with the songs picked sits above
+    // them, the way a playlist's actions do. Sharing is for one song only.
+    selectSongsScreen(from, pickedIds = []) {
+      const ui = this;
+      const picked = new Set(pickedIds);
+      const pl = from.playlistId ? ui.lib.playlist(from.playlistId) : null;
+      const done = () => ui.popIf("selectsongs");
+      const titleFor = (n) => (n ? tp({ one: "{count} Selected", other: "{count} Selected" }, n) : t("Select Songs"));
+      const screen = this.list({
+        name: "selectsongs",
+        title: titleFor(picked.size),
+        refreshOnLibrary: true,
+        rows: () => {
+          const tracks = from.tracks();
+          // a song deleted or taken out of the list is no longer picked
+          const here = new Set(tracks.map((track) => track.id));
+          for (const id of picked) if (!here.has(id)) picked.delete(id);
+          const chosen = tracks.filter((track) => picked.has(track.id));
+          const n = chosen.length;
+          const actions = [];
+          if (n === 1) {
+            actions.push({ label: t("Share Song…"), dim: true, action: () => { done(); ui.shareSong(chosen[0]); } });
+          }
+          if (n) {
+            actions.push({ label: t("Add to Playlist…"), dim: true, chevron: true, action: () => ui.push(ui.pickPlaylistScreen(chosen, done)) });
+            if (pl) {
+              actions.push({ label: t("Remove from {name}…", { name: pl.name }), dim: true, action: () => ui._confirmRemove(pl.id, chosen, done) });
+            }
+            actions.push({
+              label: n === 1 ? t("Delete Song…") : tp({ one: "Delete {count} Song…", other: "Delete {count} Songs…" }, n),
+              dim: true,
+              action: () => ui._confirmDelete(chosen, done),
+            });
+          }
+          const all = tracks.length > 0 && n === tracks.length;
+          actions.push({
+            label: all ? t("Deselect All") : t("Select All"),
+            dim: true,
+            action: () => {
+              if (all) picked.clear();
+              else for (const track of tracks) picked.add(track.id);
+              redraw();
+            },
+          });
+          screen.actionCount = actions.length;
+          screen.title = titleFor(n);
+          const toggle = (id) => {
+            if (picked.has(id)) picked.delete(id);
+            else picked.add(id);
+            redraw();
+          };
+          return actions.concat(tracks.map((track) => ({
+            label: track.title,
+            sub: [track.artist, track.album].filter(Boolean).join(" — "),
+            value: picked.has(track.id) ? "✓" : "",
+            action: () => toggle(track.id),
+            hold: () => toggle(track.id),
+          })));
+        },
+        empty: { big: t("No Songs"), small: "" },
+      });
+      // Share comes and goes above the songs, so the cursor and the view move
+      // with the rows: whatever row was under it stays under it.
+      function redraw() {
+        const before = screen.actionCount;
+        const at = screen.sel;
+        screen.refresh();
+        const delta = screen.actionCount - before;
+        if (at >= before) {
+          screen.sel = at + delta;
+          screen.first = Math.max(0, screen.first + delta);
+        } else if (at === before - 1) {
+          screen.sel = screen.actionCount - 1;
+        }
+        screen.paint();
+        ui._retitle(screen);
+      }
+      // land on the song that was held
+      const tracks = from.tracks();
+      const index = tracks.findIndex((track) => picked.has(track.id));
+      screen.actionCount = 0;
+      screen.rows();
+      if (index >= 0) screen.sel = screen.actionCount + index;
+      return screen;
+    }
+
+    // The status bar names the screen on top; a screen whose title changes
+    // while it is open says so here.
+    _retitle(screen) {
+      if (this.top() !== screen || !this.sbTitle) return;
+      this.sbTitle.textContent = screen.title || "PeerTunes";
+      this._fitTitle();
+    }
+
+    shareSong(track) {
+      this._publishAndShare(track.title, [track], "song-" + track.id);
+    }
+
+    _confirmDelete(tracks, after) {
+      const one = tracks.length === 1;
+      this.dialog({
+        msg: one ? t("Delete this song?") : tp({ one: "Delete {count} song?", other: "Delete {count} songs?" }, tracks.length),
+        sub: one ? tracks[0].title : tp({ one: "{count} song will be removed from this device.", other: "{count} songs will be removed from this device." }, tracks.length),
+        buttons: [
+          {
+            label: t("Delete"),
+            action: async () => {
+              for (const track of tracks) await this.lib.deleteTrack(track.id);
+              if (after) after();
+            },
           },
+          { label: t("Cancel") },
         ],
       });
     }
 
-    pickPlaylistScreen(track) {
+    _confirmRemove(id, tracks, after) {
+      const p = this.lib.playlist(id);
+      if (!p) return;
+      this.dialog({
+        msg: t("Remove from {name}?", { name: p.name }),
+        sub: tracks.length === 1 ? tracks[0].title : tp({ one: "{count} song", other: "{count} songs" }, tracks.length),
+        buttons: [
+          {
+            label: t("Remove"),
+            action: async () => {
+              for (const track of tracks) await this.lib.removeFromPlaylist(id, track.id);
+              if (after) after();
+            },
+          },
+          { label: t("Cancel") },
+        ],
+      });
+    }
+
+    // Adds one song or several. `after` runs once they are in, before the
+    // note saying so.
+    pickPlaylistScreen(tracks, after = null) {
       const ui = this;
+      if (!Array.isArray(tracks)) tracks = [tracks];
+      const addAll = async (id) => {
+        let added = 0;
+        for (const track of tracks) if (await ui.lib.addToPlaylist(id, track.id)) added++;
+        return added;
+      };
+      const what = (count) => (tracks.length === 1 ? tracks[0].title : tp({ one: "{count} song", other: "{count} songs" }, count));
       return this.list({
         name: "pickpl",
         title: t("Add to Playlist"),
@@ -1026,10 +1183,11 @@
               placeholder: t("My Mixtape"),
               onDone: async (name) => {
                 const pl = await ui.lib.createPlaylist(name);
-                await ui.lib.addToPlaylist(pl.id, track.id);
+                const added = await addAll(pl.id);
                 ui.pop();
                 ui.popIf("pickpl");
-                ui.dialog({ msg: t("Added to {name}", { name: pl.name }), sub: track.title, buttons: [{ label: t("OK") }] });
+                if (after) after();
+                ui.dialog({ msg: t("Added to {name}", { name: pl.name }), sub: what(added), buttons: [{ label: t("OK") }] });
               },
             })),
           },
@@ -1037,11 +1195,12 @@
           label: pl.name,
           value: formatNumber(pl.trackIds.length),
           action: async () => {
-            const ok = await ui.lib.addToPlaylist(pl.id, track.id);
+            const added = await addAll(pl.id);
             ui.popIf("pickpl");
+            if (after) after();
             ui.dialog({
-              msg: ok ? t("Added to {name}", { name: pl.name }) : t("Already in {name}", { name: pl.name }),
-              sub: track.title,
+              msg: added ? t("Added to {name}", { name: pl.name }) : t("Already in {name}", { name: pl.name }),
+              sub: what(added || tracks.length),
               buttons: [{ label: t("OK") }],
             });
           },
