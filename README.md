@@ -14,7 +14,7 @@
 - Shows a default cover when a song has none, and names an album after its folder when the file carries no album tag
 - Albums open as a row of covers. Spin the wheel and the covers flip in 3D, like the good old days
 - Artists, Songs and Genres as classic lists, sorted the way classic players did
-- Custom playlists, with the On-The-Go gesture: hold the center button on a song to file it away
+- Custom playlists, with the On-The-Go gesture: hold the center button on a song to file it away, share it, or select several songs to add or delete at once
 - Scan a QR code to load a drive or a share link, instead of typing a long `hyper://` key
 - Touch and hold the progress bar to scrub, so you can jump to any point in a song
 - Delete a song, a whole album, or a playlist when you are done with it
@@ -54,7 +54,7 @@ To add music, go to `Add Music`:
 
 ## Playlists
 
-`Music -> Playlists` to make your own mixtapes. Hold the center button on any song (or long press it on the screen) for the old On-The-Go move: pick a playlist or make a new one right there. Inside a playlist you can add songs with checkmarks, remove one by holding it, share it, or delete it. The songs always stay in your library.
+`Music -> Playlists` to make your own mixtapes. Hold the center button on any song (or long press it on the screen) for the old On-The-Go move: share the song, pick a playlist or make a new one right there, or delete it. `Select Songs…` puts a checkmark on that song and lets you pick more, so a few songs go into a playlist, come out of one, or get deleted at once; Share is there while one song is picked. Inside a playlist you can add songs with checkmarks, remove one by holding it, share it, or delete it. The songs always stay in your library.
 
 ## Share a playlist
 
