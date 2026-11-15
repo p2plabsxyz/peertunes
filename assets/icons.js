@@ -15,6 +15,8 @@
     menu: `<svg viewBox="0 0 14 12"><rect x="0" y="0.6" width="14" height="2.2" rx="1.1"/><rect x="0" y="4.9" width="14" height="2.2" rx="1.1"/><rect x="0" y="9.2" width="14" height="2.2" rx="1.1"/></svg>`,
 
     note: `<svg viewBox="0 0 24 24"><path d="M9 3v10.55A4 4 0 1 0 11 17V7h8V3H9z"/></svg>`,
+    search: `<svg viewBox="0 0 24 24"><path d="M10 3a7 7 0 0 1 5.6 11.2l5 5-1.4 1.4-5-5A7 7 0 1 1 10 3zm0 2a5 5 0 1 0 0 10 5 5 0 0 0 0-10z"/></svg>`,
+    clear: `<svg viewBox="0 0 12 12"><path d="M3 3l6 6M9 3l-6 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`,
     shuffle: `<svg viewBox="0 0 24 24"><path d="M17 4l4 4-4 4V9h-2.6l-8 8H2v-2h3.6l8-8H17V4zM2 7h4.4l1.8 1.8-1.4 1.4L5.2 9H2V7zm12.8 6.8l1.4-1.4 1.8 1.8H17v-3l4 4-4 4v-3h-3.6l-1.6-1.6 1.4-1.4.6.6z"/></svg>`,
     repeat: `<svg viewBox="0 0 24 24"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/></svg>`,
     repeatOne: `<svg viewBox="0 0 24 24"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4zm-5-9h1.5v5H12v-3.5h-1V9l1-1z"/></svg>`,

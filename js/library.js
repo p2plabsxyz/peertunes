@@ -36,6 +36,18 @@
 
   const norm = (s) => (s || "").toLowerCase().trim();
   const sortName = (s) => norm(s).replace(/^the\s+/, "");
+
+  // A search finds a song when every word typed is in its title, artist or
+  // album, whatever the case and with or without accents: "beyonce" finds
+  // Beyoncé. Only Latin accents go; marks other scripts need to spell a word
+  // stay, so a word in Hindi still has to be that word.
+  const searchText = (s) => String(s || "").normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  function songMatches(track, query) {
+    const words = searchText(query).split(/\s+/).filter(Boolean);
+    if (!words.length) return true;
+    const text = searchText([track && track.title, track && track.artist, track && track.album].join("\n"));
+    return words.every((word) => text.includes(word));
+  }
   const decodeSafe = (s) => { try { return decodeURIComponent(s); } catch { return s; } };
 
   // ---------- share manifest (pure helpers, covered by tests) ----------
@@ -1220,6 +1232,7 @@
 
   PT.Library = Library;
   PT.sortName = sortName;
+  PT.songMatches = songMatches;
   PT.buildManifest = buildManifest;
   PT.parseManifest = parseManifest;
   PT.resolveManifestFiles = resolveManifestFiles;

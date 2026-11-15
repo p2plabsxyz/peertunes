@@ -270,6 +270,68 @@ body {
 /* ---------- lists ---------- */
 
 .list { position: absolute; inset: 0; overflow: hidden; }
+
+/* The search field above the songs takes one row's height; the rows below
+   it (.search-results) are a row shorter. */
+.searchbar {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: calc(var(--u) * 14.9);
+  display: flex;
+  align-items: center;
+  padding: 0 calc(var(--w) * 2.6);
+  border-bottom: 1px solid rgba(0, 0, 30, 0.14);
+}
+.search-results { position: absolute; top: calc(var(--u) * 14.9); left: 0; right: 0; bottom: 0; overflow: hidden; }
+.search-field {
+  flex: 1;
+  min-width: 0;
+  height: calc(var(--u) * 10.4);
+  display: flex;
+  align-items: center;
+  gap: calc(var(--w) * 1.4);
+  padding-block: 0;
+  padding-inline: calc(var(--w) * 2.2) calc(var(--w) * 1.6);
+  border: 1px solid #979da6;
+  border-radius: calc(var(--u) * 5.2);
+  background: #fff;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.16);
+  cursor: text;
+}
+.search-field:focus-within { border-color: var(--sel-b); box-shadow: 0 0 0 2px rgba(23, 95, 212, 0.25), inset 0 1px 2px rgba(0, 0, 0, 0.16); }
+.search-icon { display: inline-flex; flex: 0 0 auto; width: calc(var(--u) * 5.2); }
+.search-icon svg { width: 100%; fill: var(--ink-dim); }
+.search-field input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  padding: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: calc(var(--u) * 5.8);
+  font-weight: 600;
+}
+.search-field input::placeholder { color: var(--ink-dim); font-weight: 500; }
+/* The field draws its own clear button, the same everywhere. */
+.search-field input::-webkit-search-cancel-button,
+.search-field input::-webkit-search-decoration { -webkit-appearance: none; appearance: none; display: none; }
+.search-clear {
+  flex: 0 0 auto;
+  width: calc(var(--u) * 7);
+  height: calc(var(--u) * 7);
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: #b6bbc3;
+  color: #fff;
+  cursor: pointer;
+}
+.search-clear svg { display: block; width: 52%; height: 52%; }
+.search-clear[hidden] { display: none; }
 .list-inner { position: absolute; left: 0; right: 0; top: 0; }
 .list.has-rail .list-inner { inset-inline-end: calc(var(--w) * 3.6); }
 
