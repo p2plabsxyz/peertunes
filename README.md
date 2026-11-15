@@ -77,6 +77,8 @@ In PeerSky Mobile, `Keep On This Device…` on an imported playlist saves every 
 
 Publishing needs PeerSky (that is where the drive writes live), on a desktop or a phone. On a phone the web view cannot fetch `hyper://`, so PeerSky gives the page `window.peerskyHyperWrite(url)`, which turns a `hyper://` address into one on the app's own server, and the writes go there. A phone shares the drive while PeerSky is open, and opens it again when PeerTunes starts. Outside PeerSky you can still share folders you synced from a URL. The app accepts `#playlist=` or `?playlist=` (and old `src=` links) with `hyper://`, `ipfs://`, `ipns://` and http(s) sources.
 
+On an iPhone a song in a web view plays at full volume whatever the page sets, so turning the wheel on Now Playing did nothing while a song played. PeerSky on an iPhone gives the page `window.peerskyVolume.change(step)`, which moves the phone's own volume, as the side buttons do, and answers `{ volume }`, which the bar shows. Everywhere else the wheel moves the song's volume.
+
 ## Languages
 
 PeerTunes shows the language PeerSky shows. PeerSky Mobile sets `window.peerskyTunes = { language, strings }` before the page loads, the English text of each word to its translation, and calls `PT.setLanguage` with a new set when another language is picked: the pages are drawn again where they are and the song keeps playing. Arabic, Persian and Urdu turn the screen around; the wheel stays as it is. Without that, as on a desktop or in a plain browser, it is all English. The words live in PeerSky Mobile's catalogs, and its `scripts/i18n.mjs` lists every one the app uses, so each `t()`, `tp()` and `msg()` call names its English text as one plain string.
