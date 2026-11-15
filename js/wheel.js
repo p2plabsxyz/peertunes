@@ -50,7 +50,13 @@
           ArrowRight: () => this._press("next"),
         };
         const fn = map[e.key];
-        if (fn) { e.preventDefault(); fn(); }
+        if (fn) { e.preventDefault(); fn(); return; }
+        // Any other letter is typing, for a screen with a search field. The
+        // screen puts it there itself, so the browser must not as well.
+        if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+          const typed = new CustomEvent("type", { detail: { key: e.key }, cancelable: true });
+          if (!this.dispatchEvent(typed)) e.preventDefault();
+        }
       });
     }
 

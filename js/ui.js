@@ -9,6 +9,8 @@
 
   const ROW_H = 14.9; // in --u units (1% of screen height)
   const VISIBLE = 6;
+  // Songs gets its search field once there are more than this many.
+  const SEARCH_AFTER = 10;
   // How often a kept playlist on screen asks how its songs are doing, and how
   // long before it asks the host to keep its folder again.
   const KEEP_CHECK_MS = 3000;
@@ -110,6 +112,7 @@
 
       this.wheel.addEventListener("scroll", (e) => this._onScroll(e.detail.dir));
       this.wheel.addEventListener("press", (e) => this._onPress(e.detail.btn));
+      this.wheel.addEventListener("type", (e) => { if (this._onType(e.detail.key)) e.preventDefault(); });
 
       this.lib.addEventListener("changed", () => {
         const top = this.top();
@@ -198,6 +201,14 @@
       if (s && s.onScroll) s.onScroll(dir, this);
     }
 
+    // A key typed with no field in focus: a screen with a search field takes
+    // it there. True when it did.
+    _onType(key) {
+      if (this._dialog) return false;
+      const s = this.top();
+      return !!(s && s.onType && s.onType(key));
+    }
+
     // ---------- remember the page across a refresh ----------
 
     // each screen carries a small `route` like ["album", key]; we persist the
@@ -206,7 +217,9 @@
       const out = [];
       for (const s of this.stack) {
         if (!s.route) { if (s.name === "root") continue; else break; }
-        const pos = typeof s.sel === "number" ? s.sel : (typeof s.idx === "number" ? s.idx : 0);
+        // A row of a search's results is not that row once the search is
+        // gone, which it is when the page is made again.
+        const pos = s.query ? undefined : typeof s.sel === "number" ? s.sel : (typeof s.idx === "number" ? s.idx : 0);
         out.push({ r: s.route, pos });
       }
       return out;
@@ -347,33 +360,59 @@
 
     // ---------- list screen factory ----------
 
+    // opts.search, for a list that can be searched: { show() } says when the
+    // field is there, { none } is what an empty search says, and { start() }
+    // is the row to land on after the words change. rows() reads this.query.
     list(opts) {
       const ui = this;
+      const search = opts.search || null;
       return {
         name: opts.name,
         title: opts.title,
         route: opts.route || null,
         refreshOnLibrary: !!opts.refreshOnLibrary,
-        onMenu: opts.onMenu,
+        // MENU takes the words away first, then goes back.
+        onMenu: search
+          ? function () { if (this.query) this.setQuery(""); else ui.pop(); }
+          : opts.onMenu,
         rows: opts.rows,
         sel: 0,
         first: 0,
+        query: "",
+        visible: VISIBLE,
+        // Whether the field is there: words in it keep it there.
+        canSearch() {
+          return !!search && (!!this.query || search.show());
+        },
         render(page) {
           this.page = page;
+          // The field takes one row's room, so one row fewer shows.
+          const searching = this.canSearch();
+          this.visible = searching ? VISIBLE - 1 : VISIBLE;
+          this.input = null;
+          this.results = page;
+          if (searching) {
+            page.appendChild(this._searchBar());
+            this.results = h("div", "search-results");
+            page.appendChild(this.results);
+          }
+          this._fill(this.results);
+        },
+        _fill(body) {
           this.data = opts.rows();
           if (opts.onRender) opts.onRender(this);
           if (!this.data.length) {
-            page.appendChild(msgEl(opts.empty || { big: t("Nothing Here"), small: "" }));
+            body.appendChild(msgEl(this.query && search ? search.none : (opts.empty || { big: t("Nothing Here"), small: "" })));
             return;
           }
-          let host = page;
+          let host = body;
           if (opts.split) {
             const grid = h("div", "split");
             host = h("div", "list-host");
             grid.appendChild(host);
             const pane = h("div", "artpane");
             grid.appendChild(pane);
-            page.appendChild(grid);
+            body.appendChild(grid);
             if (opts.artPane) opts.artPane(pane);
           }
           const listEl = h("div", "list");
@@ -393,26 +432,104 @@
           this.page.innerHTML = "";
           this.render(this.page);
         },
+        // The field above the rows. It is made again with the page, as after a
+        // song is added, and keeps the words and the keyboard when it is.
+        _searchBar() {
+          const bar = h("div", "searchbar");
+          const field = h("label", "search-field");
+          field.appendChild(h("span", "search-icon", PT.icons.search));
+          const input = h("input");
+          input.type = "search";
+          input.dir = "auto";
+          input.maxLength = 80;
+          input.autocomplete = "off";
+          input.spellcheck = false;
+          input.setAttribute("autocapitalize", "off");
+          input.setAttribute("autocorrect", "off");
+          input.setAttribute("enterkeyhint", "search");
+          input.placeholder = t("Search");
+          input.setAttribute("aria-label", t("Search"));
+          input.value = this.query;
+          field.appendChild(input);
+          // A drawn cross, centred whatever the font: a × character sat low.
+          const clear = h("button", "search-clear", PT.icons.clear);
+          clear.type = "button";
+          clear.title = t("Clear search");
+          clear.setAttribute("aria-label", t("Clear search"));
+          clear.hidden = !this.query;
+          field.appendChild(clear);
+          bar.appendChild(field);
+          input.addEventListener("input", () => this.setQuery(input.value, { fromField: true }));
+          input.addEventListener("keydown", (e) => {
+            // Up and down move through what was found, typing stays put.
+            if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+              e.preventDefault();
+              this.onScroll(e.key === "ArrowDown" ? 1 : -1);
+            } else if (e.key === "Enter") {
+              // Done typing: the keyboard goes, the songs found stay.
+              e.preventDefault();
+              input.blur();
+            }
+          });
+          input.addEventListener("focus", () => { this._typing = true; });
+          input.addEventListener("blur", () => { this._typing = false; });
+          clear.addEventListener("click", () => { this.setQuery(""); input.focus(); });
+          this.input = input;
+          this.clearButton = clear;
+          if (this._typing) setTimeout(() => this._focusEnd(), 0);
+          return bar;
+        },
+        _focusEnd() {
+          const input = this.input;
+          if (!input || !input.isConnected) return;
+          input.focus();
+          const end = input.value.length;
+          try { input.setSelectionRange(end, end); } catch {}
+        },
+        setQuery(value, { fromField = false } = {}) {
+          const query = String(value || "").slice(0, 80);
+          if (query === this.query && !fromField) return;
+          this.query = query;
+          if (this.input && !fromField) this.input.value = query;
+          if (this.clearButton) this.clearButton.hidden = !query;
+          this.first = 0;
+          this.sel = search && search.start ? search.start(this) : 0;
+          if (!this.results) return;
+          // Only the rows are made again, so the field keeps its place.
+          this.results.innerHTML = "";
+          this._fill(this.results);
+          ui._saveRouteSoon();
+        },
+        // A letter typed with the field out of focus starts a search there.
+        onType(key) {
+          if (!this.input || !this.input.isConnected) return false;
+          this.setQuery(this.query + key);
+          this._focusEnd();
+          return true;
+        },
         paint() {
           const n = this.data.length;
           if (!n) return;
+          const visible = this.visible;
           if (this.sel < this.first) this.first = this.sel;
-          if (this.sel > this.first + VISIBLE - 1) this.first = this.sel - VISIBLE + 1;
-          this.first = Math.max(0, Math.min(this.first, Math.max(0, n - VISIBLE)));
+          if (this.sel > this.first + visible - 1) this.first = this.sel - visible + 1;
+          this.first = Math.max(0, Math.min(this.first, Math.max(0, n - visible)));
           const start = Math.max(0, this.first - 8);
-          const end = Math.min(n, this.first + VISIBLE + 8);
+          const end = Math.min(n, this.first + visible + 8);
           this.inner.innerHTML = "";
           this.inner.style.top = u((start - this.first) * ROW_H);
           for (let i = start; i < end; i++) {
             this.inner.appendChild(this._row(this.data[i], i));
           }
-          const hasRail = n > VISIBLE;
+          const hasRail = n > visible;
           this.listEl.classList.toggle("has-rail", hasRail);
           if (hasRail) {
+            // The rail runs the height of the rows shown.
+            const railH = 89.5 - (VISIBLE - visible) * ROW_H;
             const knob = this.rail.firstChild;
-            const kh = Math.max(8, (VISIBLE / n) * 89.5);
+            const kh = Math.max(8, (visible / n) * railH);
             knob.style.height = u(kh);
-            knob.style.top = u((this.first / Math.max(1, n - VISIBLE)) * (89.5 - kh));
+            knob.style.top = u((this.first / Math.max(1, n - visible)) * (railH - kh));
           }
           // With the rail in place, which narrows the rows. The first paint is
           // before the page is on screen, which fits it then.
@@ -472,7 +589,7 @@
           listEl.addEventListener("pointerdown", (e) => { startY = e.clientY; lastMoved = 0; this._dragged = false; });
           listEl.addEventListener("pointermove", (e) => {
             if (startY == null) return;
-            const rowPx = listEl.getBoundingClientRect().height / VISIBLE;
+            const rowPx = listEl.getBoundingClientRect().height / this.visible;
             if (!rowPx) return;
             const moved = Math.round((startY - e.clientY) / rowPx);
             if (moved !== lastMoved) {
@@ -779,6 +896,8 @@
 
     songsScreen(fixed = null, title = t("Songs"), route = null) {
       const ui = this;
+      // Shuffle sits above the songs, so the first song is one row down.
+      const firstSong = (count) => (count > 1 ? 1 : 0);
       const screen = this.list({
         name: "songs",
         title,
@@ -788,8 +907,11 @@
           // An artist's or a genre's songs as they were picked, less any
           // deleted since, which stayed in the list.
           const current = () => (fixed ? fixed.filter((track) => ui.lib.tracks.has(track.id)) : ui.lib.getSongs());
-          const songs = current();
-          return ui._shuffleRow(songs).concat(songs.map((track, i) => ({
+          const all = current();
+          // What a search found plays as its own list, from the song picked.
+          const query = screen.query;
+          const songs = query ? all.filter((track) => PT.songMatches(track, query)) : all;
+          return (query ? [] : ui._shuffleRow(songs)).concat(songs.map((track, i) => ({
             label: track.title,
             sub: [track.artist, track.album].filter(Boolean).join(" — "),
             action: () => ui.playAndShow(songs, i),
@@ -797,9 +919,15 @@
           })));
         },
         empty: { big: t("No Songs"), small: t("Add some music first.") },
+        // All the songs get a search field once they run past a few screens.
+        search: fixed ? null : {
+          show: () => ui.lib.count > SEARCH_AFTER,
+          none: { big: t("No songs found"), small: t("Try another search term.") },
+          start: (s) => (s.query ? 0 : firstSong(ui.lib.count)),
+        },
       });
       // land on the first song, Shuffle stays one scroll up
-      if ((fixed ? fixed.length : ui.lib.count) > 1) screen.sel = 1;
+      screen.sel = firstSong(fixed ? fixed.length : ui.lib.count);
       return screen;
     }
 
@@ -2167,6 +2295,7 @@
   }
 
   PT.barFraction = barFraction;
+  PT.SONG_SEARCH_AFTER = SEARCH_AFTER;
   PT.fitLines = fitLines;
   PT.keepView = keepView;
   PT.UI = UI;

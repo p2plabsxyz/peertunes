@@ -14,6 +14,7 @@
 - Shows a default cover when a song has none, and names an album after its folder when the file carries no album tag
 - Albums open as a row of covers. Spin the wheel and the covers flip in 3D, like the good old days
 - Artists, Songs and Genres as classic lists, sorted the way classic players did
+- Songs gets a search bar once you have more than ten. It finds songs by title, artist or album, accents or not, and what it finds plays as its own list
 - Custom playlists, with the On-The-Go gesture: hold the center button on a song to file it away, share it, or select several songs to add or delete at once
 - Scan a QR code to load a drive or a share link, instead of typing a long `hyper://` key
 - Touch and hold the progress bar to scrub, so you can jump to any point in a song
@@ -43,7 +44,7 @@ How the wheel works:
 - Tap the shuffle mark beside the song count on Now Playing to turn shuffle on or off. It is blue when on
 - Or just touch and hold the progress bar and slide: the song jumps when you let go
 - In Albums you can also swipe sideways or tap a side cover
-- Keyboard also works: arrows, Enter, Escape, Space
+- Keyboard also works: arrows, Enter, Escape, Space. On Songs, just start typing to search; Escape clears the search, then goes back
 
 To add music, go to `Add Music`:
 
