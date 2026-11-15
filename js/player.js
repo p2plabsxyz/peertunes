@@ -8,6 +8,24 @@
   const { msg, tKey } = PT.i18n || require("./i18n.js").i18n;
   const UNKNOWN_ARTIST = msg("Unknown Artist");
 
+  // PeerSky on an iPhone moves the phone's volume for the wheel (stepVolume).
+  function phoneVolume() {
+    const phone = typeof window !== "undefined" ? window.peerskyVolume : null;
+    return phone && typeof phone.change === "function" ? phone : null;
+  }
+
+  // The phone's volume after a step, from 0 to 1, or null when it has none to
+  // give.
+  async function askPhoneVolume(phone, step) {
+    try {
+      const answer = await phone.change(step);
+      const level = answer && answer.volume;
+      return typeof level === "number" && Number.isFinite(level) ? Math.min(1, Math.max(0, level)) : null;
+    } catch {
+      return null;
+    }
+  }
+
   class Player extends EventTarget {
     constructor(audio, library) {
       super();
@@ -307,6 +325,55 @@
 
     setVolume(v) {
       this.audio.volume = Math.min(1, Math.max(0, v));
+      this.dispatchEvent(new CustomEvent("volume"));
+    }
+
+    // The volume the wheel shows: the phone's own where PeerSky moves it for
+    // the wheel, else the song's.
+    get volume() {
+      return Number.isFinite(this._phoneVolume) ? this._phoneVolume : this.audio.volume;
+    }
+
+    // One turn of the wheel. An iPhone keeps a song in a web view at full
+    // volume whatever the page sets, so the wheel did nothing while a song
+    // played. There PeerSky offers window.peerskyVolume, which moves the
+    // phone's own volume, as the side buttons do, and answers where it is now.
+    // Turns that come while it answers are added together. Without it, or when
+    // it cannot (a simulator has no volume to set), the song's own volume moves.
+    stepVolume(delta) {
+      const phone = phoneVolume();
+      if (!phone) {
+        this.setVolume(this.audio.volume + delta);
+        return Promise.resolve();
+      }
+      this._volumeDelta = (this._volumeDelta || 0) + delta;
+      if (this._volumeBusy) return this._volumeBusy;
+      this._volumeBusy = (async () => {
+        while (this._volumeDelta) {
+          const step = this._volumeDelta;
+          this._volumeDelta = 0;
+          const level = await askPhoneVolume(phone, step);
+          if (level === null) {
+            this._phoneVolume = null;
+            this.setVolume(this.audio.volume + step);
+          } else {
+            this._phoneVolume = level;
+            this.dispatchEvent(new CustomEvent("volume"));
+          }
+        }
+        this._volumeBusy = null;
+      })();
+      return this._volumeBusy;
+    }
+
+    // Where the phone's volume is, for Now Playing to show before the wheel
+    // turns. The side buttons can have moved it since.
+    async refreshVolume() {
+      const phone = phoneVolume();
+      if (!phone) return;
+      const level = await askPhoneVolume(phone, 0);
+      if (level === null) return;
+      this._phoneVolume = level;
       this.dispatchEvent(new CustomEvent("volume"));
     }
 

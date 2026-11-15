@@ -1514,13 +1514,17 @@
           const onTrack = () => this.paintTrack();
           const onTime = () => this.paintTime();
           const onState = () => this.paintBadges();
+          // The phone's volume answers a turn of the wheel a moment later.
+          const onVolume = () => this.paintVolume();
           ui.player.addEventListener("trackchange", onTrack);
           ui.player.addEventListener("time", onTime);
           ui.player.addEventListener("state", onState);
+          ui.player.addEventListener("volume", onVolume);
           cleanup = [
             () => ui.player.removeEventListener("trackchange", onTrack),
             () => ui.player.removeEventListener("time", onTime),
             () => ui.player.removeEventListener("state", onState),
+            () => ui.player.removeEventListener("volume", onVolume),
             () => clearTimeout(this._shufTimer),
           ];
           // A tap on the mark turns Shuffle on or off. So does the wheel, on
@@ -1535,6 +1539,8 @@
           this._bindScrub(np.querySelector(".np-progress"));
           this.paintTrack();
           this.paintTime();
+          this.paintVolume();
+          ui.player.refreshVolume();
         },
         destroy() { cleanup.forEach((f) => f()); },
         // Touch and hold the bar to scrub: the fill follows your finger and
@@ -1615,6 +1621,9 @@
           this.els.tEl.textContent = fmtTime(cur);
           this.els.tRem.textContent = Number.isFinite(d) ? "-" + fmtTime(Math.max(0, d - cur)) : "--:--";
         },
+        paintVolume() {
+          this.els.vfill.style.width = `${ui.player.volume * 100}%`;
+        },
         _volTimer: null,
         _shufTimer: null,
         // The wheel on the Shuffle stop: forward is on, back is off.
@@ -1654,8 +1663,8 @@
           }
           this.mode = "vol";
           this.np.classList.add("volmode");
-          ui.player.setVolume(ui.player.audio.volume + dir * 0.05);
-          this.els.vfill.style.width = `${ui.player.audio.volume * 100}%`;
+          ui.player.stepVolume(dir * 0.05);
+          this.paintVolume();
           ui.wheel.tick();
           clearTimeout(this._volTimer);
           this._volTimer = setTimeout(() => {
